@@ -1,0 +1,15 @@
+[package]
+name = "starkvote"
+version = "0.1.0"
+edition = "2024_07"
+
+[dependencies]
+starknet = "2.1.0"
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+
+[scripts]
+test = "scarb test"
+build = "scarb build"
