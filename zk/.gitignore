@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.local/
+samples/*.json
+artifacts/*.wasm
+artifacts/*.zkey
+artifacts/verification_key.json
+.env

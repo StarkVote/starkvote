@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+zk/node_modules/
+
+# Build outputs
+contracts/target/
+contracts/Scarb.lock
+zk/dist/
+
+# Local data (secrets)
+zk/.local/*.json
+
+# Generated artifacts
+zk/samples/*.json
+zk/artifacts/*.wasm
+zk/artifacts/*.zkey
+zk/artifacts/verification_key.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
