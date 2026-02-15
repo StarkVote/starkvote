@@ -5,6 +5,9 @@ edition = "2024_07"
 
 [dependencies]
 starknet = "2.1.0"
+# garaga = { git = "https://github.com/keep-starknet-strange/garaga.git", branch = "main" }
+# NOTE: Using starknet 2.1.0 to match Scarb 0.6.1 (Cairo 2.1.0)
+# To use newer versions, upgrade Scarb: https://docs.swmansion.com/scarb/download.html
 
 [[target.starknet-contract]]
 sierra = true

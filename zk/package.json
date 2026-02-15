@@ -9,6 +9,7 @@
     "deploy": "tsx scripts/deploy_contracts.ts",
     "gen-identity": "tsx scripts/gen_identity_commitment.ts",
     "fetch-leaves": "tsx scripts/fetch_leaves.ts",
+    "compute-root": "tsx scripts/compute_merkle_root.ts",
     "gen-proof": "tsx scripts/gen_proof.ts",
     "format-calldata": "tsx scripts/format_calldata.ts",
     "export-vk": "bash scripts/export_vk.sh"

@@ -1,5 +1,19 @@
 use starknet::ContractAddress;
 
+/// Poll Contract - Manages anonymous voting polls with ZK proof verification
+///
+/// Flow:
+/// 1. Admin creates poll with create_poll(merkle_root from off-chain computation)
+/// 2. Voters generate ZK proofs off-chain (proving they're in the tree)
+/// 3. Voters submit votes via vote() - proof verified by external verifier
+/// 4. Contract tracks nullifiers to prevent double-voting
+/// 5. Anyone can read tallies via get_tally()
+/// 6. After poll ends, anyone can call finalize() to compute winner
+///
+/// Key Features:
+/// - Anonymous: Votes can't be linked to specific voters
+/// - One vote per poll: Enforced via nullifiers
+/// - Verifiable: All data on-chain, proofs cryptographically verified
 #[derive(Drop, Serde, Copy, starknet::Store)]
 struct PollData {
     exists: bool,
@@ -19,7 +33,8 @@ trait IPoll<TContractState> {
         poll_id: u64,
         options_count: u8,
         start_time: u64,
-        end_time: u64
+        end_time: u64,
+        merkle_root: felt252
     );
     fn vote(
         ref self: TContractState,
@@ -114,7 +129,8 @@ mod Poll {
             poll_id: u64,
             options_count: u8,
             start_time: u64,
-            end_time: u64
+            end_time: u64,
+            merkle_root: felt252
         ) {
             // Check admin
             let caller = get_caller_address();
@@ -129,8 +145,10 @@ mod Poll {
             let registry = IVoterSetRegistryDispatcher { contract_address: registry_address };
             assert(registry.is_frozen(), 'Registry must be frozen');
 
-            // Snapshot the root
-            let snapshot_root = registry.get_root();
+            // Use the provided Merkle root (computed off-chain in BN254 field)
+            // Note: Admin must compute this off-chain using the frozen commitment list
+            // with Semaphore-compatible Poseidon hash (BN254 field)
+            let snapshot_root = merkle_root;
 
             // Check options count is valid
             assert(options_count > 0, 'Must have at least 1 option');
