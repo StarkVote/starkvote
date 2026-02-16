@@ -94,7 +94,7 @@ async function addVoters(commitments: string[]) {
   const account = buildAccount(provider);
   const registry = new Contract(
     {
-      abi: loadAbi("starkvote_VoterSetRegistry.sierra.json"),
+      abi: loadAbi("starkvote_VoterSetRegistry.contract_class.json"),
       address: getAddress("registry_address", "REGISTRY_ADDRESS"),
       providerOrAccount: account,
     }
@@ -114,7 +114,7 @@ async function freezeRegistry() {
   const account = buildAccount(provider);
   const registry = new Contract(
     {
-      abi: loadAbi("starkvote_VoterSetRegistry.sierra.json"),
+      abi: loadAbi("starkvote_VoterSetRegistry.contract_class.json"),
       address: getAddress("registry_address", "REGISTRY_ADDRESS"),
       providerOrAccount: account,
     }
@@ -136,7 +136,7 @@ async function createPoll(
   const account = buildAccount(provider);
   const poll = new Contract(
     {
-      abi: loadAbi("starkvote_Poll.sierra.json"),
+      abi: loadAbi("starkvote_Poll.contract_class.json"),
       address: getAddress("poll_address", "POLL_ADDRESS"),
       providerOrAccount: account,
     }
@@ -152,7 +152,7 @@ async function submitVote(calldataPath: string) {
   const account = buildAccount(provider);
   const poll = new Contract(
     {
-      abi: loadAbi("starkvote_Poll.sierra.json"),
+      abi: loadAbi("starkvote_Poll.contract_class.json"),
       address: getAddress("poll_address", "POLL_ADDRESS"),
       providerOrAccount: account,
     }
@@ -168,7 +168,7 @@ async function getTally(pollId: number, option: number) {
   const provider = buildProvider();
   const poll = new Contract(
     {
-      abi: loadAbi("starkvote_Poll.sierra.json"),
+      abi: loadAbi("starkvote_Poll.contract_class.json"),
       address: getAddress("poll_address", "POLL_ADDRESS"),
       providerOrAccount: provider,
     }
@@ -182,7 +182,7 @@ async function finalize(pollId: number) {
   const account = buildAccount(provider);
   const poll = new Contract(
     {
-      abi: loadAbi("starkvote_Poll.sierra.json"),
+      abi: loadAbi("starkvote_Poll.contract_class.json"),
       address: getAddress("poll_address", "POLL_ADDRESS"),
       providerOrAccount: account,
     }
@@ -196,7 +196,7 @@ async function getPoll(pollId: number) {
   const provider = buildProvider();
   const poll = new Contract(
     {
-      abi: loadAbi("starkvote_Poll.sierra.json"),
+      abi: loadAbi("starkvote_Poll.contract_class.json"),
       address: getAddress("poll_address", "POLL_ADDRESS"),
       providerOrAccount: provider,
     }

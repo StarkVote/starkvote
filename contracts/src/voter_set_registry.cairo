@@ -1,7 +1,7 @@
 use starknet::ContractAddress;
 
 #[starknet::interface]
-trait IVoterSetRegistry<TContractState> {
+pub trait IVoterSetRegistry<TContractState> {
     fn add_voter(ref self: TContractState, commitment: u256);
     fn freeze(ref self: TContractState);
     fn get_leaf(self: @TContractState, index: u32) -> u256;
@@ -13,6 +13,10 @@ trait IVoterSetRegistry<TContractState> {
 #[starknet::contract]
 mod VoterSetRegistry {
     use starknet::{ContractAddress, get_caller_address};
+    use starknet::storage::{
+        Map, StoragePointerReadAccess, StoragePointerWriteAccess,
+        StorageMapReadAccess, StorageMapWriteAccess,
+    };
 
     const MAX_LEAVES: u32 = 1073741824; // 2^30
 
@@ -21,7 +25,7 @@ mod VoterSetRegistry {
         admin: ContractAddress,
         frozen: bool,
         leaf_count: u32,
-        leaves: LegacyMap<u32, u256>,
+        leaves: Map<u32, u256>,
     }
 
     #[event]

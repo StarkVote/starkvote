@@ -11,7 +11,7 @@ const contractsDir = path.join(rootDir, "contracts/target/dev");
 config({ path: path.join(__dirname, "../.env") });
 
 const REGISTRY_ABI = JSON.parse(
-  fs.readFileSync(path.join(contractsDir, "starkvote_VoterSetRegistry.sierra.json"), "utf-8")
+  fs.readFileSync(path.join(contractsDir, "starkvote_VoterSetRegistry.contract_class.json"), "utf-8")
 ).abi;
 
 function u256ToBigInt(value: any): bigint {

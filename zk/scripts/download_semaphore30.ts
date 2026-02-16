@@ -7,7 +7,7 @@
  *
  * Then extracts verification_key30.json from the zkey file.
  */
-import { download } from '@zk-kit/artifacts';
+import { maybeGetSnarkArtifacts } from '@zk-kit/artifacts';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
@@ -22,11 +22,11 @@ async function main() {
 
   try {
     // Download artifacts using @zk-kit/artifacts
-    const artifacts = await download('semaphore', 30);
+    const artifacts = await maybeGetSnarkArtifacts('semaphore', { treeDepth: 30 });
 
     console.log('✅ Download complete!');
-    console.log(`   WASM: ${artifacts.wasmPath}`);
-    console.log(`   ZKEY: ${artifacts.zkeyPath}\n`);
+    console.log(`   WASM: ${artifacts.wasm}`);
+    console.log(`   ZKEY: ${artifacts.zkey}\n`);
 
     // Copy to artifacts directory
     const artifactsDir = path.join(__dirname, '../artifacts');
@@ -38,8 +38,8 @@ async function main() {
     const zkeyDest = path.join(artifactsDir, 'semaphore30.zkey');
 
     console.log('📋 Copying artifacts to zk/artifacts/...');
-    fs.copyFileSync(artifacts.wasmPath, wasmDest);
-    fs.copyFileSync(artifacts.zkeyPath, zkeyDest);
+    fs.copyFileSync(artifacts.wasm, wasmDest);
+    fs.copyFileSync(artifacts.zkey, zkeyDest);
 
     console.log('✅ Files copied:');
     console.log(`   ${wasmDest}`);

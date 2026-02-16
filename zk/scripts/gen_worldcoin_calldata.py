@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.10
 """
 Generate Worldcoin-compatible full_proof_with_hints from Semaphore proof outputs.
 
@@ -142,12 +142,16 @@ def main() -> int:
     proof = Groth16Proof.from_dict(normalized_proof, public_signals)
     calldata = groth16_calldata_from_vk_and_proof(vk, proof)
 
+    # Garaga calldata starts with a length prefix (calldata[0] = len(rest)).
+    # starknet.js adds its own Span length when serializing, so strip the prefix.
+    calldata_no_prefix = calldata[1:]
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     output = {
         "poll_id": int(config["poll_id"]),
         "option": int(config["option"]),
-        "full_proof_with_hints_len": len(calldata),
-        "full_proof_with_hints": [hex(x) for x in calldata],
+        "full_proof_with_hints_len": len(calldata_no_prefix),
+        "full_proof_with_hints": [hex(x) for x in calldata_no_prefix],
         "public_signals": [str(x) for x in public_signals],
     }
     with out_path.open("w", encoding="utf-8") as f:

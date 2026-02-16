@@ -10,7 +10,7 @@
 import { Group } from "@semaphore-protocol/group";
 import * as fs from "fs";
 
-const TREE_DEPTH = 20;
+const TREE_DEPTH = 30;
 
 async function main() {
   const leavesData = JSON.parse(fs.readFileSync(".local/leaves.json", "utf-8"));

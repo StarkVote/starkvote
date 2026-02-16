@@ -13,7 +13,7 @@ struct PollData {
 }
 
 #[starknet::interface]
-trait IPoll<TContractState> {
+pub trait IPoll<TContractState> {
     fn create_poll(
         ref self: TContractState,
         poll_id: u64,
@@ -41,6 +41,10 @@ trait IPoll<TContractState> {
 mod Poll {
     use super::PollData;
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+    use starknet::storage::{
+        Map, StoragePointerReadAccess, StoragePointerWriteAccess,
+        StorageMapReadAccess, StorageMapWriteAccess,
+    };
     use starkvote::verifier::{IWorldcoinVerifierDispatcher, IWorldcoinVerifierDispatcherTrait};
     use starkvote::voter_set_registry::{
         IVoterSetRegistryDispatcher, IVoterSetRegistryDispatcherTrait
@@ -51,9 +55,9 @@ mod Poll {
         admin: ContractAddress,
         registry: ContractAddress,
         verifier: ContractAddress,
-        polls: LegacyMap<u64, PollData>,
-        used_nullifiers: LegacyMap<(u64, u256), bool>,
-        tally: LegacyMap<(u64, u8), u32>,
+        polls: Map<u64, PollData>,
+        used_nullifiers: Map<(u64, u256), bool>,
+        tally: Map<(u64, u8), u32>,
     }
 
     #[event]
@@ -104,8 +108,15 @@ mod Poll {
 
     /// Compute keccak256(u256_big_endian(value)) >> 8
     /// This matches the Semaphore v4 hash: keccak256(zeroPadValue(toBeHex(value), 32)) >> 8n
+    /// Note: Cairo's keccak syscall returns bytes in little-endian order,
+    /// so we must reverse to match Ethereum's big-endian keccak256.
     fn semaphore_hash(value: u256) -> u256 {
-        let hash = core::keccak::keccak_u256s_be_inputs(array![value].span());
+        let raw = core::keccak::keccak_u256s_be_inputs(array![value].span());
+        // Reverse bytes to convert from Cairo LE keccak to Ethereum BE keccak
+        let hash = u256 {
+            low: core::integer::u128_byte_reverse(raw.high),
+            high: core::integer::u128_byte_reverse(raw.low),
+        };
         hash / 256_u256 // right-shift by 8 bits
     }
 
@@ -218,7 +229,7 @@ mod Poll {
         }
 
         fn finalize(ref self: ContractState, poll_id: u64) {
-            let mut poll = self.polls.read(poll_id);
+            let poll = self.polls.read(poll_id);
             assert(poll.exists, 'Poll does not exist');
 
             let now = get_block_timestamp();
@@ -243,10 +254,17 @@ mod Poll {
                 i += 1;
             };
 
-            poll.finalized = true;
-            poll.winner_option = winner_option;
-            poll.max_votes = max_votes;
-            self.polls.write(poll_id, poll);
+            let finalized_poll = PollData {
+                exists: poll.exists,
+                options_count: poll.options_count,
+                start_time: poll.start_time,
+                end_time: poll.end_time,
+                snapshot_root: poll.snapshot_root,
+                finalized: true,
+                winner_option,
+                max_votes,
+            };
+            self.polls.write(poll_id, finalized_poll);
 
             self.emit(PollFinalized { poll_id, winner_option, max_votes });
         }

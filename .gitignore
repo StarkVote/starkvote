@@ -1,14 +1,19 @@
 # Dependencies
 node_modules/
-zk/node_modules/
 
 # Build outputs
 contracts/target/
 contracts/Scarb.lock
 zk/dist/
 
-# Local data (secrets)
-zk/.local/*.json
+# Vendored libraries (large, fetch locally)
+contracts/garaga/
+
+# Secrets
+zk/.env
+
+# Local data (generated per-session)
+zk/.local/
 
 # Generated artifacts
 zk/samples/*.json
@@ -16,12 +21,22 @@ zk/artifacts/*.wasm
 zk/artifacts/*.zkey
 zk/artifacts/verification_key.json
 
+# Python
+__pycache__/
+*.pyc
+
+# Tarballs
+*.tgz
+
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# Claude Code
+.claude/
 
 # OS
 .DS_Store

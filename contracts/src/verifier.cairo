@@ -1,9 +1,8 @@
 /// Semaphore30Verifier: Wraps the Garaga-generated Groth16 verifier
 /// to match the IWorldcoinVerifier interface expected by Poll contract.
-use starknet::ContractAddress;
 
 #[starknet::interface]
-trait IWorldcoinVerifier<TContractState> {
+pub trait IWorldcoinVerifier<TContractState> {
     /// Returns `Some(public_inputs)` if the proof is valid, `None` otherwise.
     ///
     /// `public_inputs` are expected in Semaphore order:
@@ -16,8 +15,9 @@ trait IWorldcoinVerifier<TContractState> {
 #[starknet::contract]
 mod Semaphore30Verifier {
     use starkvote::groth16_verifier::{IGroth16VerifierBN254Dispatcher, IGroth16VerifierBN254DispatcherTrait};
-    use core::option::OptionTrait;
     use starknet::ContractAddress;
+    use starknet::storage::StoragePointerReadAccess;
+    use starknet::storage::StoragePointerWriteAccess;
 
     #[storage]
     struct Storage {
