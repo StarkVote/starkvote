@@ -1,0 +1,124 @@
+{
+  "projectName": "garaga",
+  "projectOwner": "keep-starknet-strange",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": true,
+  "commitConvention": "gitmoji",
+  "contributors": [
+    {
+      "login": "feltroidprime",
+      "name": "Feltroid Prime",
+      "avatar_url": "https://avatars.githubusercontent.com/u/96737978?v=4",
+      "profile": "https://github.com/feltroidprime",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "abdelhamidbakhta",
+      "name": "Abdel @ StarkWare ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/45264458?v=4",
+      "profile": "https://github.com/abdelhamidbakhta",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "tekkac",
+      "name": "Tarik K.",
+      "avatar_url": "https://avatars.githubusercontent.com/u/98529704?v=4",
+      "profile": "https://github.com/tekkac",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "bacharif",
+      "name": "Bachir Arif",
+      "avatar_url": "https://avatars.githubusercontent.com/u/22233193?v=4",
+      "profile": "https://github.com/bacharif",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "rdubois-crypto",
+      "name": "Renaud Dubois",
+      "avatar_url": "https://avatars.githubusercontent.com/u/103030189?v=4",
+      "profile": "https://github.com/rdubois-crypto",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "raugfer",
+      "name": "Rodrigo Ferreira",
+      "avatar_url": "https://avatars.githubusercontent.com/u/725060?v=4",
+      "profile": "https://raugfer.com/",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "luiz-lvj",
+      "name": "Luiz Vasconcelos Júnior",
+      "avatar_url": "https://avatars.githubusercontent.com/u/64055364?v=4",
+      "profile": "https://github.com/luiz-lvj",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "shramee",
+      "name": "Shramee Srivastav",
+      "avatar_url": "https://avatars.githubusercontent.com/u/11048263?v=4",
+      "profile": "http://shramee.me/",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "akinovak",
+      "name": "Andrija Novakovic",
+      "avatar_url": "https://avatars.githubusercontent.com/u/28649205?v=4",
+      "profile": "https://github.com/akinovak",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Liam-Eagen",
+      "name": "Liam Eagen",
+      "avatar_url": "https://avatars.githubusercontent.com/u/5618692?v=4",
+      "profile": "https://github.com/Liam-Eagen",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "petscheit",
+      "name": "Paul Etscheit",
+      "avatar_url": "https://avatars.githubusercontent.com/u/10947187?v=4",
+      "profile": "https://github.com/petscheit",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "stefanMadzharov",
+      "name": "stefanMadzharov",
+      "avatar_url": "https://avatars.githubusercontent.com/u/83451593?v=4",
+      "profile": "https://github.com/stefanMadzharov",
+      "contributions": [
+        "code"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "linkToUsage": true
+}

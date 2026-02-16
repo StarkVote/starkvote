@@ -6,9 +6,6 @@ contracts/target/
 contracts/Scarb.lock
 zk/dist/
 
-# Vendored libraries (large, fetch locally)
-contracts/garaga/
-
 # Secrets
 zk/.env
 

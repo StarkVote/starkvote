@@ -20,7 +20,7 @@ contracts/           Cairo smart contracts
     voter_set_registry.cairo   On-chain voter commitment storage
     verifier.cairo             Semaphore30Verifier (wraps Garaga)
     groth16_verifier.cairo     Garaga-generated BN254 verifier
-  garaga/                      Vendored Garaga library (not committed)
+  garaga/                      Vendored Garaga v1.0.1 library
 
 zk/                  Off-chain scripts (TypeScript + Python)
   scripts/
@@ -41,23 +41,9 @@ docs/
 
 ## Setup
 
-### 1. Vendor Garaga library
+### 1. Build contracts
 
-The contracts depend on [Garaga v1.0.1](https://github.com/keep-starknet-strange/garaga). It must be vendored locally (156MB, not committed to git).
-
-If you have Garaga in your Scarb cache (from a previous build):
-
-```bash
-cp -r ~/.cache/scarb/registry/git/checkouts/garaga-*/*/  contracts/garaga
-```
-
-Otherwise, clone it:
-
-```bash
-git clone --branch v1.0.1 --depth 1 https://github.com/keep-starknet-strange/garaga.git contracts/garaga
-```
-
-### 2. Build contracts
+The contracts include a vendored copy of [Garaga v1.0.1](https://github.com/keep-starknet-strange/garaga) for Groth16 BN254 verification.
 
 ```bash
 cd contracts
@@ -66,14 +52,14 @@ scarb build
 
 This produces compiled artifacts in `contracts/target/dev/`.
 
-### 3. Install Node.js dependencies
+### 2. Install Node.js dependencies
 
 ```bash
 cd zk
 npm install
 ```
 
-### 4. Configure environment
+### 3. Configure environment
 
 ```bash
 cp zk/.env.example zk/.env
@@ -89,7 +75,7 @@ RPC_URL=https://starknet-sepolia.public.blastapi.io/rpc/v0_7
 
 > **Note:** Deploying the Groth16 verifier (~2MB contract) requires a private RPC (e.g. Alchemy, Infura). Public RPCs may reject the large declare transaction.
 
-### 5. Download Semaphore artifacts
+### 4. Download Semaphore artifacts
 
 ```bash
 curl -L -o zk/artifacts/semaphore30.wasm \

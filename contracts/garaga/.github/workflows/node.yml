@@ -1,0 +1,41 @@
+name: NODE tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - '*'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pre_job:
+    # continue-on-error: true # Uncomment once integration is finished
+    runs-on: ubuntu-latest
+    # Map a step output to a job output
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          concurrent_skipping: 'never'
+          paths: '["tools/**"]'
+
+  npm-test:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
+    name: NPM Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Run npm test in garaga_ts
+        working-directory: tools/npm/garaga_ts
+        run: |
+          npm ci
+          npm test

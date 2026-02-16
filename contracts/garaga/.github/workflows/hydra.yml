@@ -1,0 +1,76 @@
+name: Hydra backend test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pre_job:
+    # continue-on-error: true # Uncomment once integration is finished
+    runs-on: ubuntu-latest
+    # Map a step output to a job output
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          concurrent_skipping: 'never'
+          paths_ignore: '["**/README.md", "**/docs/**"]'
+
+
+  test-hydra:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+          components: rustfmt
+
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.10.14
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.10.14
+      - name: Install dependencies
+        run: make setup
+
+      - name: Check Black formatting
+        run: source venv/bin/activate && black --check .
+
+      - name: Test garaga_rs
+        run: |
+          source venv/bin/activate
+          (cd tools/garaga_rs && cargo fmt --check && cargo test)
+      - name: Run pytest
+        run: |
+          source venv/bin/activate
+          pytest -n auto
+      - name: Set up Scarb
+        uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.14.0"
+      - name: Run make rewrite and check for unstaged changes
+        run: |
+          source venv/bin/activate
+          if ! make rewrite; then
+            echo "Error: 'make rewrite' command failed"
+            exit 1
+          fi
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Error: Unstaged changes detected after running 'make rewrite'"
+            git status
+            exit 1
+          fi
+      - name: Check bytecode size limits
+        run: |
+          source venv/bin/activate
+          make check-max-log-n
+        continue-on-error: false
