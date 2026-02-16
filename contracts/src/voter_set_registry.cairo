@@ -50,48 +50,45 @@ mod VoterSetRegistry {
         self.leaf_count.write(0);
     }
 
-    #[external(v0)]
-    fn add_voter(ref self: ContractState, commitment: u256) {
-        let caller = get_caller_address();
-        assert(caller == self.admin.read(), 'Only admin can add voters');
-        assert(!self.frozen.read(), 'Registry is frozen');
+    #[abi(embed_v0)]
+    impl IVoterSetRegistryImpl of super::IVoterSetRegistry<ContractState> {
+        fn add_voter(ref self: ContractState, commitment: u256) {
+            let caller = get_caller_address();
+            assert(caller == self.admin.read(), 'Only admin can add voters');
+            assert(!self.frozen.read(), 'Registry is frozen');
 
-        let current_count = self.leaf_count.read();
-        assert(current_count < MAX_LEAVES, 'Max leaves exceeded');
+            let current_count = self.leaf_count.read();
+            assert(current_count < MAX_LEAVES, 'Max leaves exceeded');
 
-        self.leaves.write(current_count, commitment);
-        self.emit(VoterAdded { index: current_count, commitment });
-        self.leaf_count.write(current_count + 1);
-    }
+            self.leaves.write(current_count, commitment);
+            self.emit(VoterAdded { index: current_count, commitment });
+            self.leaf_count.write(current_count + 1);
+        }
 
-    #[external(v0)]
-    fn freeze(ref self: ContractState) {
-        let caller = get_caller_address();
-        assert(caller == self.admin.read(), 'Only admin can freeze');
-        assert(!self.frozen.read(), 'Already frozen');
+        fn freeze(ref self: ContractState) {
+            let caller = get_caller_address();
+            assert(caller == self.admin.read(), 'Only admin can freeze');
+            assert(!self.frozen.read(), 'Already frozen');
 
-        self.frozen.write(true);
-        self.emit(Frozen { leaf_count: self.leaf_count.read() });
-    }
+            self.frozen.write(true);
+            self.emit(Frozen { leaf_count: self.leaf_count.read() });
+        }
 
-    #[external(v0)]
-    fn get_leaf(self: @ContractState, index: u32) -> u256 {
-        assert(index < self.leaf_count.read(), 'Index out of bounds');
-        self.leaves.read(index)
-    }
+        fn get_leaf(self: @ContractState, index: u32) -> u256 {
+            assert(index < self.leaf_count.read(), 'Index out of bounds');
+            self.leaves.read(index)
+        }
 
-    #[external(v0)]
-    fn get_leaf_count(self: @ContractState) -> u32 {
-        self.leaf_count.read()
-    }
+        fn get_leaf_count(self: @ContractState) -> u32 {
+            self.leaf_count.read()
+        }
 
-    #[external(v0)]
-    fn is_frozen(self: @ContractState) -> bool {
-        self.frozen.read()
-    }
+        fn is_frozen(self: @ContractState) -> bool {
+            self.frozen.read()
+        }
 
-    #[external(v0)]
-    fn get_admin(self: @ContractState) -> ContractAddress {
-        self.admin.read()
+        fn get_admin(self: @ContractState) -> ContractAddress {
+            self.admin.read()
+        }
     }
 }

@@ -1,18 +1,16 @@
 [package]
 name = "starkvote"
 version = "0.1.0"
-edition = "2023_10"
+edition = "2024_07"
 
 [dependencies]
-starknet = "2.1.0"
-garaga = { git = "https://github.com/keep-starknet-strange/garaga.git", branch = "main" }
-# NOTE: Using starknet 2.1.0 to match Scarb 0.6.1 (Cairo 2.1.0)
-# To use newer versions, upgrade Scarb: https://docs.swmansion.com/scarb/download.html
+starknet = "2.14.0"
+garaga = { git = "https://github.com/keep-starknet-strange/garaga.git", tag = "v1.0.1" }
+
+[cairo]
+sierra-replace-ids = false
+inlining-strategy = 2
 
 [[target.starknet-contract]]
-sierra = true
 casm = true
-
-[scripts]
-test = "scarb test"
-build = "scarb build"
+casm-add-pythonic-hints = true
