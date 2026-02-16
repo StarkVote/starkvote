@@ -1,208 +1,258 @@
 #!/usr/bin/env tsx
-// Contract interaction script for StarkVote
-// Provides CLI commands for testing the full voting workflow
 
-import { Account, Contract, RpcProvider, cairo } from 'starknet';
-import * as dotenv from 'dotenv';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Account, Contract, RpcProvider, Signer, json } from "starknet";
+import { config } from "dotenv";
+import { existsSync, readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const zkDir = join(__dirname, "..");
+const rootDir = join(__dirname, "../..");
+const artifactsDir = join(rootDir, "contracts/target/dev");
+const localAddressPath = join(zkDir, ".local/contract_addresses.json");
 
-// Contract ABIs (to be filled in)
-const REGISTRY_ABI = [];
-const POLL_ABI = [];
-const VERIFIER_ABI = [];
+config({ path: join(zkDir, ".env") });
 
-// Contract addresses (from deployment)
-const REGISTRY_ADDRESS = process.env.REGISTRY_ADDRESS || '';
-const POLL_ADDRESS = process.env.POLL_ADDRESS || '';
-const VERIFIER_ADDRESS = process.env.VERIFIER_ADDRESS || '';
+type CairoU256 = { low: string; high: string };
 
-// RPC and account setup
-const RPC_URL = process.env.RPC_URL || 'https://starknet-sepolia.public.blastapi.io';
-const provider = new RpcProvider({ nodeUrl: RPC_URL });
-
-// Ensure addresses have 0x prefix
-const adminAddr = (process.env.ADMIN_ADDRESS || '').startsWith('0x')
-  ? process.env.ADMIN_ADDRESS!
-  : `0x${process.env.ADMIN_ADDRESS}`;
-const privateKey = (process.env.PRIVATE_KEY || '').startsWith('0x')
-  ? process.env.PRIVATE_KEY!
-  : `0x${process.env.PRIVATE_KEY}`;
-
-const account = new Account({
-  provider: provider,
-  address: adminAddr,
-  signer: privateKey
-});
-
-// Registry functions
-export async function addVoter(commitment: string) {
-    console.log(`Adding voter with commitment: ${commitment}`);
-    const registry = new Contract(REGISTRY_ABI, REGISTRY_ADDRESS, account);
-    const tx = await registry.add_voter(cairo.uint256(commitment));
-    await provider.waitForTransaction(tx.transaction_hash);
-    console.log(`✓ Voter added. Tx: ${tx.transaction_hash}`);
+function loadAbi(sierraFilename: string) {
+  const artifact = json.parse(
+    readFileSync(join(artifactsDir, sierraFilename), "utf-8")
+  );
+  return artifact.abi;
 }
 
-export async function addVoters(commitments: string[]) {
-    console.log(`Adding ${commitments.length} voters...`);
-    for (const commitment of commitments) {
-        await addVoter(commitment);
+function loadDeployedAddresses() {
+  if (!existsSync(localAddressPath)) {
+    return {};
+  }
+  return JSON.parse(readFileSync(localAddressPath, "utf-8"));
+}
+
+function normalizeHex(value: string) {
+  return value.startsWith("0x") ? value : `0x${value}`;
+}
+
+function parseBigNumberish(value: string): bigint {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Empty numeric value");
+  }
+  return BigInt(trimmed);
+}
+
+function toU256(value: string | bigint): CairoU256 {
+  const n = typeof value === "bigint" ? value : parseBigNumberish(value);
+  if (n < 0n) {
+    throw new Error(`u256 cannot be negative: ${value.toString()}`);
+  }
+  const mask = (1n << 128n) - 1n;
+  const low = n & mask;
+  const high = n >> 128n;
+  return {
+    low: `0x${low.toString(16)}`,
+    high: `0x${high.toString(16)}`,
+  };
+}
+
+function getAddress(key: "registry_address" | "poll_address" | "verifier_address", envKey: string): string {
+  const deployed = loadDeployedAddresses() as Record<string, string>;
+  const fromLocal = deployed[key];
+  const fromEnv = process.env[envKey];
+  const addr = fromLocal || fromEnv;
+  if (!addr) {
+    throw new Error(`Missing ${envKey}. Run deploy first or set ${envKey} in zk/.env`);
+  }
+  return normalizeHex(addr);
+}
+
+function buildAccount(provider: RpcProvider): Account {
+  const address = process.env.ADMIN_ADDRESS;
+  const privateKey = process.env.PRIVATE_KEY;
+  if (!address || !privateKey) {
+    throw new Error("Missing ADMIN_ADDRESS or PRIVATE_KEY in zk/.env");
+  }
+
+  return new Account({
+    provider,
+    address: normalizeHex(address),
+    signer: new Signer(normalizeHex(privateKey)),
+    cairoVersion: "1",
+  });
+}
+
+function buildProvider(): RpcProvider {
+  return new RpcProvider({
+    nodeUrl: process.env.RPC_URL || "https://rpc.starknet-testnet.lava.build",
+  });
+}
+
+async function addVoters(commitments: string[]) {
+  const provider = buildProvider();
+  const account = buildAccount(provider);
+  const registry = new Contract(
+    {
+      abi: loadAbi("starkvote_VoterSetRegistry.sierra.json"),
+      address: getAddress("registry_address", "REGISTRY_ADDRESS"),
+      providerOrAccount: account,
     }
-}
+  );
 
-export async function freezeRegistry() {
-    console.log('Freezing registry...');
-    const registry = new Contract(REGISTRY_ABI, REGISTRY_ADDRESS, account);
-    const tx = await registry.freeze();
+  for (const commitment of commitments) {
+    const commitmentU256 = toU256(commitment);
+    console.log(`Adding voter commitment: ${commitment}`);
+    const tx = await registry.add_voter(commitmentU256);
     await provider.waitForTransaction(tx.transaction_hash);
-    console.log(`✓ Registry frozen. Tx: ${tx.transaction_hash}`);
+    console.log(`  OK ${tx.transaction_hash}`);
+  }
 }
 
-export async function getLeafCount(): Promise<number> {
-    const registry = new Contract(REGISTRY_ABI, REGISTRY_ADDRESS, provider);
-    const count = await registry.get_leaf_count();
-    return Number(count);
+async function freezeRegistry() {
+  const provider = buildProvider();
+  const account = buildAccount(provider);
+  const registry = new Contract(
+    {
+      abi: loadAbi("starkvote_VoterSetRegistry.sierra.json"),
+      address: getAddress("registry_address", "REGISTRY_ADDRESS"),
+      providerOrAccount: account,
+    }
+  );
+
+  const tx = await registry.freeze();
+  await provider.waitForTransaction(tx.transaction_hash);
+  console.log(`Registry frozen: ${tx.transaction_hash}`);
 }
 
-// Poll functions
-export async function createPoll(
-    pollId: number,
-    optionsCount: number,
-    startTime: number,
-    endTime: number,
-    root: string
+async function createPoll(
+  pollId: number,
+  optionsCount: number,
+  startTime: number,
+  endTime: number,
+  root: string
 ) {
-    console.log(`Creating poll ${pollId} with root ${root}...`);
-    const poll = new Contract(POLL_ABI, POLL_ADDRESS, account);
-
-    const tx = await poll.create_poll(
-        cairo.uint64(pollId),
-        cairo.uint8(optionsCount),
-        cairo.uint64(startTime),
-        cairo.uint64(endTime),
-        cairo.uint256(root)
-    );
-
-    await provider.waitForTransaction(tx.transaction_hash);
-    console.log(`✓ Poll created. Tx: ${tx.transaction_hash}`);
-}
-
-export async function submitVote(calldataPath: string) {
-    console.log(`Submitting vote from ${calldataPath}...`);
-    const calldata = JSON.parse(fs.readFileSync(calldataPath, 'utf-8'));
-
-    const poll = new Contract(POLL_ABI, POLL_ADDRESS, account);
-
-    // TODO: Format proof components correctly
-    const tx = await poll.vote(
-        cairo.uint64(calldata.poll_id),
-        cairo.uint8(calldata.option),
-        [cairo.uint256(calldata.p_a.x), cairo.uint256(calldata.p_a.y)],
-        [
-            [cairo.uint256(calldata.p_b.x[0]), cairo.uint256(calldata.p_b.x[1])],
-            [cairo.uint256(calldata.p_b.y[0]), cairo.uint256(calldata.p_b.y[1])]
-        ],
-        [cairo.uint256(calldata.p_c.x), cairo.uint256(calldata.p_c.y)],
-        calldata.public_signals.map((s: string) => cairo.uint256(s))
-    );
-
-    await provider.waitForTransaction(tx.transaction_hash);
-    console.log(`✓ Vote submitted. Tx: ${tx.transaction_hash}`);
-}
-
-export async function getTally(pollId: number, option: number): Promise<number> {
-    const poll = new Contract(POLL_ABI, POLL_ADDRESS, provider);
-    const tally = await poll.get_tally(cairo.uint64(pollId), cairo.uint8(option));
-    return Number(tally);
-}
-
-export async function finalizePoll(pollId: number) {
-    console.log(`Finalizing poll ${pollId}...`);
-    const poll = new Contract(POLL_ABI, POLL_ADDRESS, account);
-    const tx = await poll.finalize(cairo.uint64(pollId));
-    await provider.waitForTransaction(tx.transaction_hash);
-    console.log(`✓ Poll finalized. Tx: ${tx.transaction_hash}`);
-}
-
-export async function getPollInfo(pollId: number) {
-    const poll = new Contract(POLL_ABI, POLL_ADDRESS, provider);
-    const info = await poll.get_poll(cairo.uint64(pollId));
-    return info;
-}
-
-// CLI entry point
-async function main() {
-    const command = process.argv[2];
-
-    switch (command) {
-        case 'add-voters':
-            const commitments = process.argv.slice(3);
-            await addVoters(commitments);
-            break;
-
-        case 'freeze-registry':
-            await freezeRegistry();
-            break;
-
-        case 'create-poll':
-            const pollId = parseInt(process.argv[3]);
-            const optionsCount = parseInt(process.argv[4]);
-            const startTime = parseInt(process.argv[5]);
-            const endTime = parseInt(process.argv[6]);
-            const root = process.argv[7];
-            await createPoll(pollId, optionsCount, startTime, endTime, root);
-            break;
-
-        case 'submit-vote':
-            const calldataPath = process.argv[3];
-            await submitVote(calldataPath);
-            break;
-
-        case 'get-tally':
-            const tallyPollId = parseInt(process.argv[3]);
-            const option = parseInt(process.argv[4]);
-            const tally = await getTally(tallyPollId, option);
-            console.log(`Poll ${tallyPollId}, Option ${option}: ${tally} votes`);
-            break;
-
-        case 'finalize':
-            const finalizePollId = parseInt(process.argv[3]);
-            await finalizePoll(finalizePollId);
-            break;
-
-        case 'get-poll':
-            const getPollId = parseInt(process.argv[3]);
-            const info = await getPollInfo(getPollId);
-            console.log('Poll info:', info);
-            break;
-
-        default:
-            console.log(`
-StarkVote Interaction CLI
-
-Usage:
-  interact.ts add-voters <commitment1> <commitment2> ...
-  interact.ts freeze-registry
-  interact.ts create-poll <pollId> <optionsCount> <startTime> <endTime> <root>
-  interact.ts submit-vote <calldataPath>
-  interact.ts get-tally <pollId> <option>
-  interact.ts finalize <pollId>
-  interact.ts get-poll <pollId>
-
-Environment variables:
-  RPC_URL - Starknet RPC endpoint
-  ADMIN_ADDRESS - Admin account address
-  PRIVATE_KEY - Admin private key
-  REGISTRY_ADDRESS - VoterSetRegistry contract address
-  POLL_ADDRESS - Poll contract address
-  VERIFIER_ADDRESS - Verifier contract address
-            `);
+  const provider = buildProvider();
+  const account = buildAccount(provider);
+  const poll = new Contract(
+    {
+      abi: loadAbi("starkvote_Poll.sierra.json"),
+      address: getAddress("poll_address", "POLL_ADDRESS"),
+      providerOrAccount: account,
     }
+  );
+
+  const tx = await poll.create_poll(pollId, optionsCount, startTime, endTime, toU256(root));
+  await provider.waitForTransaction(tx.transaction_hash);
+  console.log(`Poll created: ${tx.transaction_hash}`);
 }
 
-if (require.main === module) {
-    main().catch(console.error);
+async function submitVote(calldataPath: string) {
+  const provider = buildProvider();
+  const account = buildAccount(provider);
+  const poll = new Contract(
+    {
+      abi: loadAbi("starkvote_Poll.sierra.json"),
+      address: getAddress("poll_address", "POLL_ADDRESS"),
+      providerOrAccount: account,
+    }
+  );
+
+  const calldata = JSON.parse(readFileSync(calldataPath, "utf-8"));
+  const tx = await poll.vote(Number(calldata.poll_id), Number(calldata.option), calldata.full_proof_with_hints);
+  await provider.waitForTransaction(tx.transaction_hash);
+  console.log(`Vote submitted: ${tx.transaction_hash}`);
 }
+
+async function getTally(pollId: number, option: number) {
+  const provider = buildProvider();
+  const poll = new Contract(
+    {
+      abi: loadAbi("starkvote_Poll.sierra.json"),
+      address: getAddress("poll_address", "POLL_ADDRESS"),
+      providerOrAccount: provider,
+    }
+  );
+  const tally = await poll.get_tally(pollId, option);
+  console.log(`Poll ${pollId}, option ${option}: ${tally.toString()}`);
+}
+
+async function finalize(pollId: number) {
+  const provider = buildProvider();
+  const account = buildAccount(provider);
+  const poll = new Contract(
+    {
+      abi: loadAbi("starkvote_Poll.sierra.json"),
+      address: getAddress("poll_address", "POLL_ADDRESS"),
+      providerOrAccount: account,
+    }
+  );
+  const tx = await poll.finalize(pollId);
+  await provider.waitForTransaction(tx.transaction_hash);
+  console.log(`Poll finalized: ${tx.transaction_hash}`);
+}
+
+async function getPoll(pollId: number) {
+  const provider = buildProvider();
+  const poll = new Contract(
+    {
+      abi: loadAbi("starkvote_Poll.sierra.json"),
+      address: getAddress("poll_address", "POLL_ADDRESS"),
+      providerOrAccount: provider,
+    }
+  );
+  const data = await poll.get_poll(pollId);
+  console.log(JSON.stringify(data, null, 2));
+}
+
+async function main() {
+  const command = process.argv[2];
+
+  switch (command) {
+    case "add-voters":
+      await addVoters(process.argv.slice(3));
+      return;
+    case "freeze-registry":
+      await freezeRegistry();
+      return;
+    case "create-poll":
+      await createPoll(
+        Number(process.argv[3]),
+        Number(process.argv[4]),
+        Number(process.argv[5]),
+        Number(process.argv[6]),
+        process.argv[7]
+      );
+      return;
+    case "submit-vote":
+      await submitVote(process.argv[3]);
+      return;
+    case "get-tally":
+      await getTally(Number(process.argv[3]), Number(process.argv[4]));
+      return;
+    case "finalize":
+      await finalize(Number(process.argv[3]));
+      return;
+    case "get-poll":
+      await getPoll(Number(process.argv[3]));
+      return;
+    default:
+      console.log(
+        [
+          "Usage:",
+          "  npm run interact -- add-voters <commitment1> <commitment2> ...",
+          "  npm run interact -- freeze-registry",
+          "  npm run interact -- create-poll <pollId> <optionsCount> <startTime> <endTime> <root>",
+          "  npm run interact -- submit-vote <samples/worldcoin_calldata.json>",
+          "  npm run interact -- get-tally <pollId> <option>",
+          "  npm run interact -- finalize <pollId>",
+          "  npm run interact -- get-poll <pollId>",
+        ].join("\n")
+      );
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

@@ -1,257 +1,90 @@
 # StarkVote
 
-Anonymous voting on Starknet using ZK proofs + WorldCoin's verifier.
+Anonymous voting on Starknet using Semaphore proofs and Worldcoin's deployed Groth16 verifier.
 
----
+## Production Verifier
 
-## What You Get
-
-- ✅ Anonymous voting (votes can't be linked to voters)
-- ✅ One vote per poll (enforced with nullifiers)
-- ✅ Free verification (use WorldCoin's deployed verifier)
-- ✅ Works on Sepolia testnet now
-
----
+- Network: Starknet Sepolia
+- Worldcoin verifier:
+  `0x01167d6979330fcc6633111d72416322eb0e3b78ad147a9338abea3c04edfc8a`
+- No mock verifier flow in this repo.
 
 ## Quick Start
 
-### 1. Install Dependencies
-
-```bash
-cd zk
-npm install
-
-cd ../contracts
+```powershell
+cd contracts
 scarb build
-```
 
-### 2. Deploy Contracts
+cd ..\zk
+npm install
+```
 
 Create `zk/.env`:
-```bash
+
+```env
 ADMIN_ADDRESS=0x...
 PRIVATE_KEY=0x...
-RPC_URL=https://starknet-sepolia.public.blastapi.io
+RPC_URL=https://rpc.starknet-testnet.lava.build
 ```
 
-**Deploy all contracts:**
-```bash
-cd zk
+Deploy:
+
+```powershell
 npm run deploy
 ```
 
-**This automatically:**
-- Deploys VoterSetRegistry
-- Uses WorldCoin's verifier (free!)
-- Deploys Poll contract
-- Saves addresses to `.local/contract_addresses.json`
+This deploys:
+- `VoterSetRegistry`
+- `Poll` configured to call Worldcoin verifier
 
-**Alternative (with MockVerifier):**
-```bash
-npm run deploy -- --mock-verifier
-```
+Addresses are saved in `zk/.local/contract_addresses.json`.
 
-### 3. Complete Voting Flow
+## End-To-End Flow
 
-**Generate identity:**
-```bash
-cd zk
-npm run gen-identity
-# Share the commitment with admin
-```
+1. Generate identities:
+   - `npm run gen-identity`
+2. Add commitments and freeze registry:
+   - `npm run interact -- add-voters <c1> <c2> ...`
+   - `npm run interact -- freeze-registry`
+3. Fetch leaves and compute root:
+   - `npm run fetch-leaves`
+   - `npm run compute-root`
+4. Create poll:
+   - `npm run interact -- create-poll <pollId> <options> <start> <end> <rootHex>`
+5. Generate proof:
+   - `npm run gen-proof`
+6. Generate Worldcoin calldata:
+   - `npm run format-calldata`
+7. Submit vote:
+   - `npm run interact -- submit-vote samples/worldcoin_calldata.json`
+8. Check tally/finalize:
+   - `npm run interact -- get-tally <pollId> <option>`
+   - `npm run interact -- finalize <pollId>`
 
-**Admin adds voters and freezes:**
-```bash
-registry.add_voter(<commitment1>)
-registry.add_voter(<commitment2>)
-registry.freeze()
-```
+Detailed step-by-step: `TESTING_GUIDE.md`.
 
-**Compute Merkle root (off-chain):**
-```bash
-npm run fetch-leaves    # Get commitments from registry
-npm run compute-root    # Compute root in BN254 field
-# Copy the root value
-```
+## Script Reference (`zk/package.json`)
 
-**Admin creates poll:**
-```bash
-poll.create_poll(
-  poll_id: 1,
-  options_count: 2,
-  start_time: <now>,
-  end_time: <now + 86400>,
-  merkle_root: <root_from_compute-root>
-)
-```
+- `npm run deploy`
+- `npm run interact -- <command>`
+- `npm run gen-identity`
+- `npm run fetch-leaves`
+- `npm run compute-root`
+- `npm run gen-proof`
+- `npm run format-calldata`
 
-**Voters generate proofs and vote:**
-```bash
-# Create proof config
-echo '{"poll_id": 1, "option": 0, "leaf_index": 0}' > .local/proof_config.json
+## Contract Summary
 
-npm run gen-proof         # Generate ZK proof (depth 30)
-npm run format-calldata   # Format for Starknet
+- `contracts/src/voter_set_registry.cairo`
+  - Stores voter commitments as `u256`
+  - Admin can add voters, then freeze
 
-# Submit vote using samples/calldata.json
-poll.vote(...)
-```
+- `contracts/src/poll.cairo`
+  - Stores poll config and snapshot root (`u256`)
+  - Verifies Semaphore proof by calling Worldcoin verifier
+  - Checks returned public inputs `[root, nullifier_hash, signal, scope]`
+  - Prevents double voting with `(poll_id, nullifier_hash)`
 
-**Check results:**
-```bash
-poll.get_tally(1, 0)    # Check votes
-poll.finalize(1)        # After end_time
-poll.get_poll(1)        # See winner
-```
-
----
-
-## Files Structure
-
-```
-contracts/src/
-├── voter_set_registry.cairo  # Stores voter commitments
-├── verifier.cairo             # IVerifier interface + MockVerifier
-└── poll.cairo                 # Poll management + voting
-
-zk/scripts/
-├── gen_identity_commitment.ts # Generate voter identity
-├── fetch_leaves.ts            # Read commitments from registry
-├── compute_merkle_root.ts     # Compute root off-chain
-├── gen_proof.ts               # Generate ZK proof (depth 30)
-└── format_calldata.ts         # Format for Starknet
-```
-
----
-
-## Important Notes
-
-### WorldCoin's Verifier (Sepolia)
-
-**Address:** `0x01167d6979330fcc6633111d72416322eb0e3b78ad147a9338abea3c04edfc8a`
-
-- Already deployed and working
-- Free to use (no deployment cost)
-- Requires tree depth 30 (our setup uses this)
-- Battle-tested in production
-
-### MockVerifier (Optional)
-
-The `MockVerifier` contract is included for **optional quick testing**:
-- Always returns `true` (no real verification)
-- Useful to test contract logic without generating proofs
-- Deploy Poll with MockVerifier address to use it
-- For production, always use WorldCoin's verifier
-
-**To test with MockVerifier:**
-1. Deploy MockVerifier
-2. Deploy Poll with MockVerifier address (instead of WorldCoin's)
-3. Test voting with dummy proofs
-
-**To test with real proofs:** Deploy Poll with WorldCoin's address (recommended)
-
-### Tree Depth 30
-
-All scripts use tree depth 30 to match WorldCoin's verifier:
-- Supports up to 2^30 = 1 billion voters
-- Proof generation takes ~5-10 seconds
-- Proof size ~2.5KB
-
-### Off-Chain Merkle Root
-
-The Merkle root is computed **off-chain** using Semaphore's Poseidon (BN254 field):
-1. Admin adds voters on-chain (just stores commitments)
-2. Admin freezes registry
-3. Admin computes root off-chain with `compute-root`
-4. Admin creates poll with that root
-5. Voters generate proofs matching the same root
-
----
-
-## Configuration Files
-
-Create these in `zk/.local/`:
-
-**contract_addresses.json:**
-```json
-{
-  "registry_address": "0x...",
-  "poll_address": "0x..."
-}
-```
-
-**proof_config.json:**
-```json
-{
-  "poll_id": 1,
-  "option": 0,
-  "leaf_index": 0
-}
-```
-
-These are generated automatically:
-- `identity.json` - YOUR SECRET (never commit!)
-- `leaves.json` - All commitments
-- `merkle_root.json` - Computed root
-
----
-
-## npm Scripts
-
-```bash
-npm run gen-identity      # Generate Semaphore identity
-npm run fetch-leaves      # Fetch commitments from registry
-npm run compute-root      # Compute Merkle root (depth 30)
-npm run gen-proof         # Generate ZK proof
-npm run format-calldata   # Format for Starknet
-npm run export-vk         # Export verification key
-```
-
----
-
-## Troubleshooting
-
-**"Root mismatch"**
-- Use the root from `compute-root` output
-- Verify leaves.json matches registry state
-
-**"Nullifier already used"**
-- Each identity votes once per poll
-- Use different identity or new poll
-
-**"Proof verification failed"**
-- Verify using depth 30 artifacts
-- Check leaf_index is correct (0 to count-1)
-- Ensure poll_id matches
-
-**"Index out of bounds"**
-- leaf_index must be valid (check leaves.json count)
-
----
-
-## Security
-
-**Keep Secret:**
-- `.local/identity.json` - Your private keys
-
-**Share Publicly:**
-- Your commitment (from identity.json)
-- Merkle root (for poll creation)
-- Vote tallies (on-chain)
-
-**Anonymity:**
-- Votes can't be linked to voters
-- ZK proof proves membership without revealing which member
-- Nullifiers prevent double-voting without revealing identity
-
----
-
-## Architecture
-
-See `docs/ARCHITECTURE.md` for complete protocol design.
-
----
-
-**Ready to test!** 🚀
-
-Deploy contracts → Generate identities → Add voters → Create poll → Vote → Check results
+- `contracts/src/verifier.cairo`
+  - Interface for Worldcoin verifier entrypoint:
+    `verify_groth16_proof_bn254`

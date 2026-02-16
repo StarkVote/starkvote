@@ -1,26 +1,12 @@
 use starknet::ContractAddress;
 
-/// Poll Contract - Manages anonymous voting polls with ZK proof verification
-///
-/// Flow:
-/// 1. Admin creates poll with create_poll(merkle_root from off-chain computation)
-/// 2. Voters generate ZK proofs off-chain (proving they're in the tree)
-/// 3. Voters submit votes via vote() - proof verified by external verifier
-/// 4. Contract tracks nullifiers to prevent double-voting
-/// 5. Anyone can read tallies via get_tally()
-/// 6. After poll ends, anyone can call finalize() to compute winner
-///
-/// Key Features:
-/// - Anonymous: Votes can't be linked to specific voters
-/// - One vote per poll: Enforced via nullifiers
-/// - Verifiable: All data on-chain, proofs cryptographically verified
 #[derive(Drop, Serde, Copy, starknet::Store)]
 struct PollData {
     exists: bool,
     options_count: u8,
     start_time: u64,
     end_time: u64,
-    snapshot_root: felt252,
+    snapshot_root: u256,
     finalized: bool,
     winner_option: u8,
     max_votes: u32,
@@ -34,20 +20,16 @@ trait IPoll<TContractState> {
         options_count: u8,
         start_time: u64,
         end_time: u64,
-        merkle_root: felt252
+        merkle_root: u256
     );
     fn vote(
         ref self: TContractState,
         poll_id: u64,
         option: u8,
-        root: felt252,
-        nullifier_hash: felt252,
-        signal: felt252,
-        proof: Span<felt252>,
-        public_inputs: Span<felt252>
+        full_proof_with_hints: Span<felt252>
     );
     fn get_tally(self: @TContractState, poll_id: u64, option: u8) -> u32;
-    fn is_nullifier_used(self: @TContractState, poll_id: u64, nullifier_hash: felt252) -> bool;
+    fn is_nullifier_used(self: @TContractState, poll_id: u64, nullifier_hash: u256) -> bool;
     fn get_poll(self: @TContractState, poll_id: u64) -> PollData;
     fn finalize(ref self: TContractState, poll_id: u64);
     fn get_admin(self: @TContractState) -> ContractAddress;
@@ -58,12 +40,14 @@ trait IPoll<TContractState> {
 #[starknet::contract]
 mod Poll {
     use super::PollData;
-    use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
+    use core::array::SpanTrait;
+    use core::option::OptionTrait;
+    use core::traits::Into;
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+    use starkvote::verifier::{IWorldcoinVerifierDispatcher, IWorldcoinVerifierDispatcherTrait};
     use starkvote::voter_set_registry::{
         IVoterSetRegistryDispatcher, IVoterSetRegistryDispatcherTrait
     };
-    use starkvote::verifier::{IVerifierDispatcher, IVerifierDispatcherTrait};
-    use core::traits::Into;
 
     #[storage]
     struct Storage {
@@ -71,7 +55,7 @@ mod Poll {
         registry: ContractAddress,
         verifier: ContractAddress,
         polls: LegacyMap<u64, PollData>,
-        used_nullifiers: LegacyMap<(u64, felt252), bool>,
+        used_nullifiers: LegacyMap<(u64, u256), bool>,
         tally: LegacyMap<(u64, u8), u32>,
     }
 
@@ -87,7 +71,7 @@ mod Poll {
     struct PollCreated {
         #[key]
         poll_id: u64,
-        snapshot_root: felt252,
+        snapshot_root: u256,
         start_time: u64,
         end_time: u64,
         options_count: u8,
@@ -97,8 +81,7 @@ mod Poll {
     struct Voted {
         #[key]
         poll_id: u64,
-        #[key]
-        nullifier_hash: felt252,
+        nullifier_hash: u256,
         option: u8,
     }
 
@@ -122,191 +105,152 @@ mod Poll {
         self.verifier.write(verifier);
     }
 
-    #[abi(embed_v0)]
-    impl PollImpl of super::IPoll<ContractState> {
-        fn create_poll(
-            ref self: ContractState,
-            poll_id: u64,
-            options_count: u8,
-            start_time: u64,
-            end_time: u64,
-            merkle_root: felt252
-        ) {
-            // Check admin
-            let caller = get_caller_address();
-            assert(caller == self.admin.read(), 'Only admin can create polls');
+    #[external(v0)]
+    fn create_poll(
+        ref self: ContractState,
+        poll_id: u64,
+        options_count: u8,
+        start_time: u64,
+        end_time: u64,
+        merkle_root: u256
+    ) {
+        let caller = get_caller_address();
+        assert(caller == self.admin.read(), 'Only admin can create polls');
 
-            // Check poll doesn't already exist
-            let existing_poll = self.polls.read(poll_id);
-            assert(!existing_poll.exists, 'Poll already exists');
+        let existing_poll = self.polls.read(poll_id);
+        assert(!existing_poll.exists, 'Poll already exists');
 
-            // Check registry is frozen
-            let registry_address = self.registry.read();
-            let registry = IVoterSetRegistryDispatcher { contract_address: registry_address };
-            assert(registry.is_frozen(), 'Registry must be frozen');
+        let registry_address = self.registry.read();
+        let registry = IVoterSetRegistryDispatcher { contract_address: registry_address };
+        assert(registry.is_frozen(), 'Registry must be frozen');
 
-            // Use the provided Merkle root (computed off-chain in BN254 field)
-            // Note: Admin must compute this off-chain using the frozen commitment list
-            // with Semaphore-compatible Poseidon hash (BN254 field)
-            let snapshot_root = merkle_root;
+        assert(options_count > 0, 'Must have at least 1 option');
+        assert(start_time < end_time, 'Invalid time bounds');
 
-            // Check options count is valid
-            assert(options_count > 0, 'Must have at least 1 option');
+        let poll_data = PollData {
+            exists: true,
+            options_count,
+            start_time,
+            end_time,
+            snapshot_root: merkle_root,
+            finalized: false,
+            winner_option: 0,
+            max_votes: 0,
+        };
+        self.polls.write(poll_id, poll_data);
 
-            // Check time bounds
-            assert(start_time < end_time, 'Invalid time bounds');
+        self.emit(
+            PollCreated {
+                poll_id, snapshot_root: merkle_root, start_time, end_time, options_count
+            }
+        );
+    }
 
-            // Store poll data
-            let poll_data = PollData {
-                exists: true,
-                options_count,
-                start_time,
-                end_time,
-                snapshot_root,
-                finalized: false,
-                winner_option: 0,
-                max_votes: 0,
-            };
-            self.polls.write(poll_id, poll_data);
+    #[external(v0)]
+    fn vote(ref self: ContractState, poll_id: u64, option: u8, full_proof_with_hints: Span<felt252>) {
+        let poll = self.polls.read(poll_id);
+        assert(poll.exists, 'Poll does not exist');
 
-            // Emit event
-            self
-                .emit(
-                    PollCreated {
-                        poll_id, snapshot_root, start_time, end_time, options_count
-                    }
-                );
-        }
+        let now = get_block_timestamp();
+        assert(now >= poll.start_time, 'Poll has not started');
+        assert(now <= poll.end_time, 'Poll has ended');
+        assert(option < poll.options_count, 'Invalid option');
 
-        fn vote(
-            ref self: ContractState,
-            poll_id: u64,
-            option: u8,
-            root: felt252,
-            nullifier_hash: felt252,
-            signal: felt252,
-            proof: Span<felt252>,
-            public_inputs: Span<felt252>
-        ) {
-            // 1) Check poll exists
-            let poll = self.polls.read(poll_id);
-            assert(poll.exists, 'Poll does not exist');
+        let verifier_address = self.verifier.read();
+        let verifier = IWorldcoinVerifierDispatcher { contract_address: verifier_address };
+        let verified_public_inputs_opt = verifier.verify_groth16_proof_bn254(full_proof_with_hints);
+        assert(verified_public_inputs_opt.is_some(), 'Proof verification failed');
+        let verified_public_inputs = verified_public_inputs_opt.unwrap();
+        assert(verified_public_inputs.len() == 4, 'Invalid public input count');
 
-            // 2) Check time window: start_time <= now <= end_time
-            let now = get_block_timestamp();
-            assert(now >= poll.start_time, 'Poll has not started');
-            assert(now <= poll.end_time, 'Poll has ended');
+        let pi_0 = verified_public_inputs[0];
+        let pi_1 = verified_public_inputs[1];
+        let pi_2 = verified_public_inputs[2];
+        let pi_3 = verified_public_inputs[3];
 
-            // 3) Check option is valid
-            assert(option < poll.options_count, 'Invalid option');
+        assert(*pi_0 == poll.snapshot_root, 'Root mismatch');
 
-            // 4) Check root matches snapshot
-            assert(root == poll.snapshot_root, 'Root mismatch');
+        let scope = u256 { low: poll_id.into(), high: 0 };
+        assert(*pi_3 == scope, 'Public input scope mismatch');
 
-            // 5) Check public_inputs length == 4
-            // Manual length check since we can't use .len() in older Cairo
-            let pi_0 = public_inputs[0]; // Will panic if < 1 element
-            let pi_1 = public_inputs[1]; // Will panic if < 2 elements
-            let pi_2 = public_inputs[2]; // Will panic if < 3 elements
-            let pi_3 = public_inputs[3]; // Will panic if < 4 elements
+        let signal = u256 { low: option.into(), high: 0 };
+        assert(*pi_2 == signal, 'Public input signal mismatch');
 
-            // 6) Check public_inputs[0] == root
-            assert(*pi_0 == root, 'Public input root mismatch');
+        let nullifier_hash = *pi_1;
+        let nullifier_key = (poll_id, nullifier_hash);
+        assert(!self.used_nullifiers.read(nullifier_key), 'Nullifier already used');
 
-            // 7) Check public_inputs[1] == nullifier_hash
-            assert(*pi_1 == nullifier_hash, 'Public input nullifier mismatch');
+        self.used_nullifiers.write(nullifier_key, true);
 
-            // 8) Check public_inputs[2] == signal
-            assert(*pi_2 == signal, 'Public input signal mismatch');
+        let tally_key = (poll_id, option);
+        let current_tally = self.tally.read(tally_key);
+        self.tally.write(tally_key, current_tally + 1);
 
-            // 9) Check public_inputs[3] == scope where scope == felt(poll_id)
-            let scope: felt252 = poll_id.into();
-            assert(*pi_3 == scope, 'Public input scope mismatch');
+        self.emit(Voted { poll_id, nullifier_hash, option });
+    }
 
-            // 10) Check nullifier not used
-            let nullifier_key = (poll_id, nullifier_hash);
-            assert(!self.used_nullifiers.read(nullifier_key), 'Nullifier already used');
+    #[external(v0)]
+    fn get_tally(self: @ContractState, poll_id: u64, option: u8) -> u32 {
+        self.tally.read((poll_id, option))
+    }
 
-            // 11) Verify proof
-            let verifier_address = self.verifier.read();
-            let verifier = IVerifierDispatcher { contract_address: verifier_address };
-            assert(verifier.verify(proof, public_inputs), 'Proof verification failed');
+    #[external(v0)]
+    fn is_nullifier_used(self: @ContractState, poll_id: u64, nullifier_hash: u256) -> bool {
+        self.used_nullifiers.read((poll_id, nullifier_hash))
+    }
 
-            // All checks passed - record vote
-            self.used_nullifiers.write(nullifier_key, true);
+    #[external(v0)]
+    fn get_poll(self: @ContractState, poll_id: u64) -> PollData {
+        self.polls.read(poll_id)
+    }
 
-            // Increment tally
-            let tally_key = (poll_id, option);
-            let current_tally = self.tally.read(tally_key);
-            self.tally.write(tally_key, current_tally + 1);
+    #[external(v0)]
+    fn finalize(ref self: ContractState, poll_id: u64) {
+        let mut poll = self.polls.read(poll_id);
+        assert(poll.exists, 'Poll does not exist');
 
-            // Emit event
-            self.emit(Voted { poll_id, nullifier_hash, option });
-        }
+        let now = get_block_timestamp();
+        assert(now > poll.end_time, 'Poll has not ended');
+        assert(!poll.finalized, 'Poll already finalized');
 
-        fn get_tally(self: @ContractState, poll_id: u64, option: u8) -> u32 {
-            self.tally.read((poll_id, option))
-        }
+        let mut winner_option: u8 = 0;
+        let mut max_votes: u32 = self.tally.read((poll_id, 0));
 
-        fn is_nullifier_used(self: @ContractState, poll_id: u64, nullifier_hash: felt252) -> bool {
-            self.used_nullifiers.read((poll_id, nullifier_hash))
-        }
+        let mut i: u8 = 1;
+        loop {
+            if i >= poll.options_count {
+                break;
+            }
 
-        fn get_poll(self: @ContractState, poll_id: u64) -> PollData {
-            self.polls.read(poll_id)
-        }
+            let votes = self.tally.read((poll_id, i));
+            if votes > max_votes {
+                max_votes = votes;
+                winner_option = i;
+            }
 
-        fn finalize(ref self: ContractState, poll_id: u64) {
-            // Check poll exists
-            let mut poll = self.polls.read(poll_id);
-            assert(poll.exists, 'Poll does not exist');
+            i += 1;
+        };
 
-            // Check poll has ended
-            let now = get_block_timestamp();
-            assert(now > poll.end_time, 'Poll has not ended');
+        poll.finalized = true;
+        poll.winner_option = winner_option;
+        poll.max_votes = max_votes;
+        self.polls.write(poll_id, poll);
 
-            // Check not already finalized
-            assert(!poll.finalized, 'Poll already finalized');
+        self.emit(PollFinalized { poll_id, winner_option, max_votes });
+    }
 
-            // Compute winner: argmax over all options, ties go to lowest index
-            let mut winner_option: u8 = 0;
-            let mut max_votes: u32 = self.tally.read((poll_id, 0));
+    #[external(v0)]
+    fn get_admin(self: @ContractState) -> ContractAddress {
+        self.admin.read()
+    }
 
-            let mut i: u8 = 1;
-            loop {
-                if i >= poll.options_count {
-                    break;
-                }
+    #[external(v0)]
+    fn get_registry(self: @ContractState) -> ContractAddress {
+        self.registry.read()
+    }
 
-                let votes = self.tally.read((poll_id, i));
-                if votes > max_votes {
-                    max_votes = votes;
-                    winner_option = i;
-                }
-
-                i += 1;
-            };
-
-            // Update poll data
-            poll.finalized = true;
-            poll.winner_option = winner_option;
-            poll.max_votes = max_votes;
-            self.polls.write(poll_id, poll);
-
-            // Emit event
-            self.emit(PollFinalized { poll_id, winner_option, max_votes });
-        }
-
-        fn get_admin(self: @ContractState) -> ContractAddress {
-            self.admin.read()
-        }
-
-        fn get_registry(self: @ContractState) -> ContractAddress {
-            self.registry.read()
-        }
-
-        fn get_verifier(self: @ContractState) -> ContractAddress {
-            self.verifier.read()
-        }
+    #[external(v0)]
+    fn get_verifier(self: @ContractState) -> ContractAddress {
+        self.verifier.read()
     }
 }

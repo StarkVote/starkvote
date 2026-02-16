@@ -1,36 +1,48 @@
+/// Semaphore30Verifier: Wraps the Garaga-generated Groth16 verifier
+/// to match the IWorldcoinVerifier interface expected by Poll contract.
 use starknet::ContractAddress;
 
-/// Generic verifier interface for ZK proof verification
-/// Any verifier (MockVerifier, WorldCoin's verifier, etc.) implements this interface
 #[starknet::interface]
-trait IVerifier<TContractState> {
-    /// Verifies a ZK proof against public inputs
-    /// Returns true if proof is valid, false otherwise
+trait IWorldcoinVerifier<TContractState> {
+    /// Returns `Some(public_inputs)` if the proof is valid, `None` otherwise.
     ///
-    /// @param proof: ZK proof data (Groth16 proof components)
-    /// @param public_inputs: [root, nullifier_hash, signal, scope]
-    fn verify(self: @TContractState, proof: Span<felt252>, public_inputs: Span<felt252>) -> bool;
+    /// `public_inputs` are expected in Semaphore order:
+    /// [root, nullifier_hash, signal, scope]
+    fn verify_groth16_proof_bn254(
+        self: @TContractState, full_proof_with_hints: Span<felt252>
+    ) -> Option<Span<u256>>;
 }
 
-/// Mock verifier for testing contract logic without real proofs
-/// Always returns true - useful for testing poll creation, voting flow, tallying
-///
-/// Usage:
-/// 1. Deploy MockVerifier
-/// 2. Deploy Poll with MockVerifier address
-/// 3. Test all contract logic quickly
-/// 4. When ready for real proofs, deploy Poll with WorldCoin's verifier address
 #[starknet::contract]
-mod MockVerifier {
+mod Semaphore30Verifier {
+    use starkvote::groth16_verifier::{IGroth16VerifierBN254Dispatcher, IGroth16VerifierBN254DispatcherTrait};
+    use core::option::OptionTrait;
+    use starknet::ContractAddress;
+
     #[storage]
-    struct Storage {}
+    struct Storage {
+        garaga_verifier: ContractAddress,
+    }
+
+    #[constructor]
+    fn constructor(ref self: ContractState, garaga_verifier: ContractAddress) {
+        self.garaga_verifier.write(garaga_verifier);
+    }
 
     #[abi(embed_v0)]
-    impl MockVerifierImpl of super::IVerifier<ContractState> {
-        fn verify(self: @ContractState, proof: Span<felt252>, public_inputs: Span<felt252>) -> bool {
-            // Always return true - no actual verification
-            // This allows testing Poll contract logic without generating ZK proofs
-            true
+    impl IWorldcoinVerifierImpl of super::IWorldcoinVerifier<ContractState> {
+        fn verify_groth16_proof_bn254(
+            self: @ContractState, full_proof_with_hints: Span<felt252>
+        ) -> Option<Span<u256>> {
+            let verifier_address = self.garaga_verifier.read();
+            let verifier = IGroth16VerifierBN254Dispatcher { contract_address: verifier_address };
+
+            let result = verifier.verify_groth16_proof_bn254(full_proof_with_hints);
+
+            match result {
+                Result::Ok(public_inputs) => Option::Some(public_inputs),
+                Result::Err(_) => Option::None,
+            }
         }
     }
 }

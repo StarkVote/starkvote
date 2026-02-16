@@ -1,47 +1,44 @@
 /**
- * Generate Identity Commitment
+ * Generate a Semaphore identity and persist it to .local/identity.json.
  *
- * Creates a new Semaphore identity with:
- * - trapdoor (secret)
- * - nullifier (secret)
- * - commitment (public - share this with admin)
+ * Output:
+ * - .local/identity.json (secret, do not share)
  *
- * Output: .local/identity.json (KEEP THIS SECRET!)
- * Usage: npm run gen-identity
+ * Public value to share with admin:
+ * - commitment
  */
 import { Identity } from "@semaphore-protocol/identity";
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function main() {
-    // Generate new identity
-    const identity = new Identity();
+  const identity = new Identity();
 
-    // Export identity data
-    const identityData = {
-        serialized: identity.toString(),
-        trapdoor: identity.trapdoor.toString(),
-        nullifier: identity.nullifier.toString(),
-        commitment: identity.commitment.toString()
-    };
+  const identityData = {
+    serialized: identity.export(),
+    secret_scalar: identity.secretScalar.toString(),
+    commitment: identity.commitment.toString(),
+  };
 
-    // Ensure .local directory exists
-    const localDir = path.join(__dirname, '../.local');
-    if (!fs.existsSync(localDir)) {
-        fs.mkdirSync(localDir, { recursive: true });
-    }
+  const localDir = path.join(__dirname, "../.local");
+  if (!fs.existsSync(localDir)) {
+    fs.mkdirSync(localDir, { recursive: true });
+  }
 
-    // Save to .local/identity.json (SECRET - never commit!)
-    fs.writeFileSync(
-        path.join(localDir, 'identity.json'),
-        JSON.stringify(identityData, null, 2)
-    );
+  fs.writeFileSync(
+    path.join(localDir, "identity.json"),
+    JSON.stringify(identityData, null, 2)
+  );
 
-    console.log('✅ Identity generated!');
-    console.log(`Commitment: ${identity.commitment}`);
-    console.log('');
-    console.log('⚠️  IMPORTANT: Keep .local/identity.json SECRET!');
-    console.log('📋 Share only the commitment with the admin to register as a voter.');
+  console.log("Identity generated.");
+  console.log(`Commitment: ${identity.commitment}`);
+  console.log("");
+  console.log("IMPORTANT: Keep .local/identity.json secret.");
+  console.log("Share only the commitment with the admin.");
 }
 
 main().catch(console.error);

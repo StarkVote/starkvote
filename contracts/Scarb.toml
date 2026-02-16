@@ -1,11 +1,11 @@
 [package]
 name = "starkvote"
 version = "0.1.0"
-edition = "2024_07"
+edition = "2023_10"
 
 [dependencies]
 starknet = "2.1.0"
-# garaga = { git = "https://github.com/keep-starknet-strange/garaga.git", branch = "main" }
+garaga = { git = "https://github.com/keep-starknet-strange/garaga.git", branch = "main" }
 # NOTE: Using starknet 2.1.0 to match Scarb 0.6.1 (Cairo 2.1.0)
 # To use newer versions, upgrade Scarb: https://docs.swmansion.com/scarb/download.html
 
