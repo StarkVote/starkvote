@@ -80,13 +80,11 @@ StarkVote uses Garaga in two ways:
 
 1. **Contract generation** (`garaga gen`): Given a Groth16 verification key, Garaga generates a Cairo smart contract (`Groth16VerifierBN254`) that can verify proofs for that specific key. The contract bakes in the verification key constants (~4000 lines) and implements the BN254 pairing check. This is a ~2MB contract.
 
-2. **Calldata generation** (Python library): Garaga's `groth16_calldata_from_vk_and_proof()` takes a proof + verification key and produces optimized calldata (~1900 felt252 values). This calldata includes precomputed "hints" that make on-chain verification dramatically cheaper — instead of computing expensive Miller loops and final exponentiations on-chain, the contract only needs to verify that the precomputed hints are consistent.
+2. **Calldata generation** (npm package): Garaga's `getGroth16CallData()` takes a proof + verification key and produces optimized calldata (~1900 felt252 values). This calldata includes precomputed "hints" that make on-chain verification dramatically cheaper — instead of computing expensive Miller loops and final exponentiations on-chain, the contract only needs to verify that the precomputed hints are consistent. The `garaga` npm package ships a WASM build of the Rust implementation, so calldata generation runs in Node.js (or the browser) with no Python dependency.
 
 ```
 Proof (8 numbers) + VK + Hints  →  ~1900 felt252 calldata  →  On-chain pairing check
 ```
-
-**Why Python 3.10?** Garaga's Python library has dependencies that require exactly Python 3.10. This is only needed for the calldata generation step — not for proof generation or on-chain verification.
 
 ### Worldcoin — The Interface Pattern
 
@@ -98,7 +96,7 @@ fn verify_groth16_proof_bn254(
 ) -> Option<Span<u256>>
 ```
 
-StarkVote adopts this same interface (hence `IWorldcoinVerifier` in our code and `gen_worldcoin_calldata.py` for the calldata script). We don't use Worldcoin's identity system (World ID / iris scanning) — we use Semaphore's standard identity commitments instead. The "Worldcoin" naming in our codebase refers only to the verifier interface pattern and calldata format that Garaga/Worldcoin established.
+StarkVote adopts this same interface (hence `IWorldcoinVerifier` in our code). We don't use Worldcoin's identity system (World ID / iris scanning) — we use Semaphore's standard identity commitments instead. The "Worldcoin" naming in our verifier contract refers only to the interface pattern that Garaga/Worldcoin established.
 
 ### How They Connect
 
@@ -411,19 +409,18 @@ Two files are produced:
 
 ### Calldata Formatting
 
-The proof and public signals must be formatted for Garaga's on-chain verifier. This is done by a Python script that uses Garaga's calldata generation library:
+The proof and public signals must be formatted for Garaga's on-chain verifier. This is done using the `garaga` npm package (WASM build of Garaga's Rust code):
 
-```python
-# gen_worldcoin_calldata.py
-from garaga.starknet.groth16_contract_generator.calldata import (
-    groth16_calldata_from_vk_and_proof,
-)
+```typescript
+// gen_calldata.ts
+import { init, getGroth16CallData, CurveId } from "garaga";
 
-calldata = groth16_calldata_from_vk_and_proof(vk, proof)
-calldata_no_prefix = calldata[1:]  # strip Garaga's length prefix
+await init();
+const calldata = getGroth16CallData(proof, vk, CurveId.BN254);
+const calldataNoPrefix = calldata.slice(1);  // strip Garaga's length prefix
 ```
 
-The output `worldcoin_calldata.json` contains ~1900 felt252 values — the proof, public inputs, and precomputed "hints" that make on-chain verification cheaper (avoiding expensive computations during the pairing check).
+The output `worldcoin_calldata.json` contains ~1900 felt252 values — the proof, public inputs, and precomputed "hints" that make on-chain verification cheaper (avoiding expensive computations during the pairing check). Because this uses WASM, it can run in Node.js or in the browser with no Python dependency.
 
 ---
 

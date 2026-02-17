@@ -10,15 +10,17 @@
     "fetch-leaves": "tsx scripts/fetch_leaves.ts",
     "compute-root": "tsx scripts/compute_merkle_root.ts",
     "gen-proof": "tsx scripts/gen_proof.ts",
-    "format-calldata": "python3.10 scripts/gen_worldcoin_calldata.py"
+    "format-calldata": "tsx scripts/gen_calldata.ts",
+    "finalize-poll": "tsx scripts/interact.ts finalize"
   },
   "dependencies": {
     "@semaphore-protocol/group": "^4.14.2",
     "@semaphore-protocol/identity": "^4.14.2",
-    "@semaphore-protocol/proof": "^4.14.2",
-    "@zk-kit/artifacts": "^2.0.1",
+    "@semaphore-protocol/proof": "^4.12.1",
+    "@zk-kit/artifacts": "^1.9.0",
     "@zk-kit/semaphore-artifacts": "^4.13.0",
     "dotenv": "^17.2.4",
+    "garaga": "^1.0.1",
     "poseidon-lite": "^0.2.0",
     "snarkjs": "^0.7.3",
     "starknet": "^9.2.1"

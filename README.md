@@ -8,7 +8,6 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for protocol details.
 
 - [Scarb 2.14.0](https://docs.swmansion.com/scarb/download.html) (Cairo build toolchain)
 - [Node.js 18+](https://nodejs.org/) with npm
-- [Python 3.10](https://www.python.org/) (required by Garaga for calldata generation)
 - A Starknet Sepolia wallet with testnet ETH/STRK
 
 ## Project Structure
@@ -22,7 +21,7 @@ contracts/           Cairo smart contracts
     groth16_verifier.cairo     Garaga-generated BN254 verifier
   garaga/                      Vendored Garaga v1.0.1 library
 
-zk/                  Off-chain scripts (TypeScript + Python)
+zk/                  Off-chain scripts (TypeScript)
   scripts/
     gen_identity_commitment.ts   Generate Semaphore identity
     deploy_contracts.ts          Deploy all 4 contracts
@@ -30,13 +29,14 @@ zk/                  Off-chain scripts (TypeScript + Python)
     fetch_leaves.ts              Fetch on-chain voter leaves
     compute_merkle_root.ts       Build Merkle tree from leaves
     gen_proof.ts                 Generate Semaphore ZK proof
-    gen_worldcoin_calldata.py    Format proof as Garaga calldata
+    gen_calldata.ts              Format proof as Garaga calldata (WASM)
   artifacts/                     Semaphore circuit files (wasm, zkey)
   .local/                        Generated session data (gitignored)
   samples/                       Generated proof outputs (gitignored)
 
 docs/
   ARCHITECTURE.md    Protocol architecture and cryptographic details
+  ZK_PROTOCOL.md     Detailed ZK proof explanation
 ```
 
 ## Setup
@@ -154,7 +154,7 @@ Create `zk/.local/proof_config.json`:
 # Arguments: poll_id, options_count, start_time, end_time, merkle_root
 START=$(( $(date +%s) - 3600 ))
 END=$(( $(date +%s) + 86400 ))
-ROOT=$(jq -r '.root' zk/.local/merkle_root.json)
+ROOT=$(jq -r '.root' ./.local/merkle_root.json)
 
 npm run interact -- create-poll 1 2 $START $END $ROOT
 ```
@@ -170,12 +170,10 @@ Generates the Semaphore Groth16 proof. Outputs `zk/samples/proof.json` and `zk/s
 ### Step 10: Format calldata for Garaga
 
 ```bash
-python3.10 zk/scripts/gen_worldcoin_calldata.py
+npm run format-calldata
 ```
 
-Converts the proof into Garaga-compatible calldata. Outputs `zk/samples/worldcoin_calldata.json`.
-
-> **Note:** This requires Python 3.10 specifically (Garaga dependency).
+Converts the proof into Garaga-compatible calldata using Garaga's WASM library. Outputs `zk/samples/worldcoin_calldata.json`.
 
 ### Step 11: Submit vote
 
@@ -190,11 +188,19 @@ Submits the vote transaction with the ZK proof. The contract verifies the proof 
 ```bash
 # Get vote count for poll 1, option 0
 npm run interact -- get-tally 1 0
+```
 
-# Finalize poll (after end_time)
+### Step 13: Finalize poll
+
+After `end_time` has passed, anyone can finalize the poll to compute and store the winner on-chain:
+
+```bash
+npm run finalize-poll -- 1
+
+# Or equivalently:
 npm run interact -- finalize 1
 
-# View full poll data
+# View full poll data including winner
 npm run interact -- get-poll 1
 ```
 
@@ -212,7 +218,8 @@ Attempting to submit the same proof again should fail with `'Nullifier already u
 | fetch-leaves | `npm run fetch-leaves` | Fetch voter leaves from chain |
 | compute-root | `npm run compute-root` | Compute Merkle root from leaves |
 | gen-proof | `npm run gen-proof` | Generate Semaphore ZK proof |
-| format-calldata | `python3.10 zk/scripts/gen_worldcoin_calldata.py` | Format proof as Garaga calldata |
+| format-calldata | `npm run format-calldata` | Format proof as Garaga calldata |
+| finalize-poll | `npm run finalize-poll -- <pollId>` | Finalize poll and store winner |
 
 ### interact subcommands
 
@@ -230,7 +237,7 @@ Attempting to submit the same proof again should fail with `'Nullifier already u
 
 | Contract | Address |
 |----------|---------|
-| Groth16VerifierBN254 | `0x7d15353ab2ac92ffe753f46d7a950b0acb76c9b30f036c54517b48ea71c16c4` |
-| Semaphore30Verifier | `0x2ef5f152e35a72df2648c76296400df2f3292a2b4843216d694f0701b59c584` |
-| VoterSetRegistry | `0x5cbe6e6e10f579e823ca21e2b1a3b985564e803365a0f520532de124fd95485` |
-| Poll | `0x7b5d336105939546f8f3d65f5d21886568c17c29cc89615d40e1f95f552d324` |
+| Groth16VerifierBN254 | `0x1b04659cad4e89198596e4064e4b2e60c6884e6d69bd7509ce1b8cde34ef86d` |
+| Semaphore30Verifier | `0x3113242f9bf76b126c003585d5654a4ad74270e3e8f2d19e98fa1e995afdd1f` |
+| VoterSetRegistry | `0x321c07938f8be9bd1d27c11ea596c786dfbf39fb6a814e98171afff2bada3ed` |
+| Poll | `0x5777882c5ad204f6eee6c0dbe9632b886becef514f415b7c6b163d89058c542` |
