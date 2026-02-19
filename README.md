@@ -16,7 +16,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for protocol details.
 contracts/           Cairo smart contracts
   src/
     poll.cairo                 Poll creation, proof verification, tallying
-    voter_set_registry.cairo   On-chain voter commitment storage
+    voter_set_registry.cairo   Per-poll eligible address whitelist + commitment self-registration
     verifier.cairo             Semaphore30Verifier (wraps Garaga)
     groth16_verifier.cairo     Garaga-generated BN254 verifier
   garaga/                      Vendored Garaga v1.0.1 library
@@ -25,8 +25,8 @@ zk/                  Off-chain scripts (TypeScript)
   scripts/
     gen_identity_commitment.ts   Generate Semaphore identity
     deploy_contracts.ts          Deploy all 4 contracts
-    interact.ts                  Add voters, create polls, vote, tally
-    fetch_leaves.ts              Fetch on-chain voter leaves
+    interact.ts                  Add eligible addresses, register commitments, create polls, vote, tally
+    fetch_leaves.ts              Fetch on-chain voter leaves for a poll
     compute_merkle_root.ts       Build Merkle tree from leaves
     gen_proof.ts                 Generate Semaphore ZK proof
     gen_calldata.ts              Format proof as Garaga calldata (WASM)
@@ -68,7 +68,7 @@ cp zk/.env.example zk/.env
 Edit `zk/.env` with your Starknet Sepolia wallet credentials:
 
 ```env
-ADMIN_ADDRESS=0x...
+ACCOUNT_ADDRESS=0x...
 PRIVATE_KEY=0x...
 RPC_URL=https://starknet-sepolia.public.blastapi.io/rpc/v0_7
 ```
@@ -89,7 +89,11 @@ curl -L -o zk/artifacts/semaphore30.zkey \
 
 Run all commands from the `zk/` directory.
 
-### Step 1: Generate identity
+---
+
+### Phase 1: Setup
+
+#### Step 1: Generate identity
 
 ```bash
 npm run gen-identity
@@ -97,7 +101,7 @@ npm run gen-identity
 
 Creates `zk/.local/identity.json` with a Semaphore identity (private key + commitment).
 
-### Step 2: Deploy contracts
+#### Step 2: Deploy contracts
 
 ```bash
 npm run deploy
@@ -105,30 +109,49 @@ npm run deploy
 
 Deploys all 4 contracts: Groth16VerifierBN254, Semaphore30Verifier, VoterSetRegistry, Poll. Addresses are saved to `zk/.local/contract_addresses.json`.
 
-### Step 3: Register voter
+---
+
+### Phase 2: Voter Registration (per poll)
+
+Each poll has its own independent voter set. The first caller to `add-eligible` for a given `poll_id` becomes its admin. The `poll_id` must match the one used when creating the poll in Phase 3.
+
+#### Step 3: Add eligible addresses (poll creator)
+
+```bash
+# Whitelist wallet addresses for poll 1 (first call makes you the admin)
+npm run interact -- add-eligible 1 <address1> [address2 ...]
+```
+
+#### Step 4: Register commitment (each voter)
+
+Each eligible voter configures their own wallet in `zk/.env`, then self-registers their Semaphore commitment:
 
 ```bash
 # Use the commitment from Step 1
-npm run interact -- add-voters <commitment>
+npm run interact -- register-commitment 1 <commitment>
 ```
 
-### Step 4: Freeze registry
+#### Step 5: Freeze voter set
 
 ```bash
-npm run interact -- freeze-registry
+npm run interact -- freeze-registry 1
 ```
 
-Locks the voter set permanently.
+**Locks the voter set for poll 1 permanently. Only the poll admin can freeze. This must be done before creating the poll.**
 
-### Step 5: Fetch on-chain leaves
+---
+
+### Phase 3: Poll Creation
+
+#### Step 6: Fetch on-chain leaves
 
 ```bash
-npm run fetch-leaves
+npm run fetch-leaves -- 1
 ```
 
-Reads all committed leaves from the registry. Saved to `zk/.local/leaves.json`.
+Reads all committed leaves for poll 1 from the registry. Saved to `zk/.local/leaves.json`.
 
-### Step 6: Compute Merkle root
+#### Step 7: Compute Merkle root
 
 ```bash
 npm run compute-root
@@ -136,7 +159,22 @@ npm run compute-root
 
 Builds the depth-30 Poseidon Merkle tree. Saved to `zk/.local/merkle_root.json`.
 
-### Step 7: Create proof config
+#### Step 8: Create poll
+
+```bash
+# Arguments: poll_id, options_count, start_time, end_time, merkle_root
+START=$(( $(date +%s) - 3600 ))
+END=$(( $(date +%s) + 300 ))
+ROOT=$(jq -r '.root' ./.local/merkle_root.json)
+
+npm run interact -- create-poll 1 2 $START $END $ROOT
+```
+
+---
+
+### Phase 4: Voting
+
+#### Step 9: Create proof config
 
 Create `zk/.local/proof_config.json`:
 
@@ -148,18 +186,7 @@ Create `zk/.local/proof_config.json`:
 }
 ```
 
-### Step 8: Create poll
-
-```bash
-# Arguments: poll_id, options_count, start_time, end_time, merkle_root
-START=$(( $(date +%s) - 3600 ))
-END=$(( $(date +%s) + 86400 ))
-ROOT=$(jq -r '.root' ./.local/merkle_root.json)
-
-npm run interact -- create-poll 1 2 $START $END $ROOT
-```
-
-### Step 9: Generate ZK proof
+#### Step 10: Generate ZK proof
 
 ```bash
 npm run gen-proof
@@ -167,7 +194,7 @@ npm run gen-proof
 
 Generates the Semaphore Groth16 proof. Outputs `zk/samples/proof.json` and `zk/samples/public.json`.
 
-### Step 10: Format calldata for Garaga
+#### Step 11: Format calldata for Garaga
 
 ```bash
 npm run format-calldata
@@ -175,7 +202,7 @@ npm run format-calldata
 
 Converts the proof into Garaga-compatible calldata using Garaga's WASM library. Outputs `zk/samples/worldcoin_calldata.json`.
 
-### Step 11: Submit vote
+#### Step 12: Submit vote
 
 ```bash
 npm run interact -- submit-vote samples/worldcoin_calldata.json
@@ -183,14 +210,18 @@ npm run interact -- submit-vote samples/worldcoin_calldata.json
 
 Submits the vote transaction with the ZK proof. The contract verifies the proof on-chain.
 
-### Step 12: Check results
+---
+
+### Phase 5: Results
+
+#### Step 13: Check results
 
 ```bash
 # Get vote count for poll 1, option 0
 npm run interact -- get-tally 1 0
 ```
 
-### Step 13: Finalize poll
+#### Step 14: Finalize poll
 
 After `end_time` has passed, anyone can finalize the poll to compute and store the winner on-chain:
 
@@ -204,7 +235,7 @@ npm run interact -- finalize 1
 npm run interact -- get-poll 1
 ```
 
-### Verify double-vote protection
+#### Verify double-vote protection
 
 Attempting to submit the same proof again should fail with `'Nullifier already used'`.
 
@@ -215,7 +246,7 @@ Attempting to submit the same proof again should fail with `'Nullifier already u
 | gen-identity | `npm run gen-identity` | Generate Semaphore identity |
 | deploy | `npm run deploy` | Deploy all contracts |
 | interact | `npm run interact -- <cmd>` | Contract interaction (see subcommands) |
-| fetch-leaves | `npm run fetch-leaves` | Fetch voter leaves from chain |
+| fetch-leaves | `npm run fetch-leaves -- <pollId>` | Fetch voter leaves for a poll |
 | compute-root | `npm run compute-root` | Compute Merkle root from leaves |
 | gen-proof | `npm run gen-proof` | Generate Semaphore ZK proof |
 | format-calldata | `npm run format-calldata` | Format proof as Garaga calldata |
@@ -225,8 +256,9 @@ Attempting to submit the same proof again should fail with `'Nullifier already u
 
 | Subcommand | Usage |
 |------------|-------|
-| add-voters | `npm run interact -- add-voters <commitment1> [commitment2 ...]` |
-| freeze-registry | `npm run interact -- freeze-registry` |
+| add-eligible | `npm run interact -- add-eligible <pollId> <address1> [address2 ...]` |
+| register-commitment | `npm run interact -- register-commitment <pollId> <commitment>` |
+| freeze-registry | `npm run interact -- freeze-registry <pollId>` |
 | create-poll | `npm run interact -- create-poll <pollId> <optionsCount> <startTime> <endTime> <root>` |
 | submit-vote | `npm run interact -- submit-vote <calldata.json>` |
 | get-tally | `npm run interact -- get-tally <pollId> <option>` |
@@ -237,7 +269,7 @@ Attempting to submit the same proof again should fail with `'Nullifier already u
 
 | Contract | Address |
 |----------|---------|
-| Groth16VerifierBN254 | `0x1b04659cad4e89198596e4064e4b2e60c6884e6d69bd7509ce1b8cde34ef86d` |
-| Semaphore30Verifier | `0x3113242f9bf76b126c003585d5654a4ad74270e3e8f2d19e98fa1e995afdd1f` |
-| VoterSetRegistry | `0x321c07938f8be9bd1d27c11ea596c786dfbf39fb6a814e98171afff2bada3ed` |
-| Poll | `0x5777882c5ad204f6eee6c0dbe9632b886becef514f415b7c6b163d89058c542` |
+| Groth16VerifierBN254 | `0x7b36d8d96916d4353b70982e6781c5f1373487bafc0afa60f433f1545346a68` |
+| Semaphore30Verifier | `0x549185d992ed265a0fb3fb17eea5e7ee753ea02c8d6b4608f6c83ae895d4dd5` |
+| VoterSetRegistry | `0x524442ab0c7bae6a9a0ce2b00ac6d621b9502c454ffdc204c9b48a2c37a68c` |
+| Poll | `0x5789a8b8844df95cd10689b3d5f2273ab4e769a4e5c1c6f062749e0d47aab73` |

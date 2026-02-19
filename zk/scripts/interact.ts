@@ -69,10 +69,10 @@ function getAddress(key: "registry_address" | "poll_address" | "verifier_address
 }
 
 function buildAccount(provider: RpcProvider): Account {
-  const address = process.env.ADMIN_ADDRESS;
+  const address = process.env.ACCOUNT_ADDRESS;
   const privateKey = process.env.PRIVATE_KEY;
   if (!address || !privateKey) {
-    throw new Error("Missing ADMIN_ADDRESS or PRIVATE_KEY in zk/.env");
+    throw new Error("Missing ACCOUNT_ADDRESS or PRIVATE_KEY in zk/.env");
   }
 
   return new Account({
@@ -89,7 +89,7 @@ function buildProvider(): RpcProvider {
   });
 }
 
-async function addVoters(commitments: string[]) {
+async function addEligible(pollId: number, addresses: string[]) {
   const provider = buildProvider();
   const account = buildAccount(provider);
   const registry = new Contract(
@@ -100,16 +100,13 @@ async function addVoters(commitments: string[]) {
     }
   );
 
-  for (const commitment of commitments) {
-    const commitmentU256 = toU256(commitment);
-    console.log(`Adding voter commitment: ${commitment}`);
-    const tx = await registry.add_voter(commitmentU256);
-    await provider.waitForTransaction(tx.transaction_hash);
-    console.log(`  OK ${tx.transaction_hash}`);
-  }
+  console.log(`Adding ${addresses.length} eligible address(es) for poll ${pollId}...`);
+  const tx = await registry.add_eligible_batch(pollId, addresses.map(normalizeHex));
+  await provider.waitForTransaction(tx.transaction_hash);
+  console.log(`Eligible addresses added: ${tx.transaction_hash}`);
 }
 
-async function freezeRegistry() {
+async function registerCommitment(pollId: number, commitment: string) {
   const provider = buildProvider();
   const account = buildAccount(provider);
   const registry = new Contract(
@@ -120,9 +117,27 @@ async function freezeRegistry() {
     }
   );
 
-  const tx = await registry.freeze();
+  const commitmentU256 = toU256(commitment);
+  console.log(`Registering commitment for poll ${pollId}: ${commitment}`);
+  const tx = await registry.register_commitment(pollId, commitmentU256);
   await provider.waitForTransaction(tx.transaction_hash);
-  console.log(`Registry frozen: ${tx.transaction_hash}`);
+  console.log(`Commitment registered: ${tx.transaction_hash}`);
+}
+
+async function freezeRegistry(pollId: number) {
+  const provider = buildProvider();
+  const account = buildAccount(provider);
+  const registry = new Contract(
+    {
+      abi: loadAbi("starkvote_VoterSetRegistry.contract_class.json"),
+      address: getAddress("registry_address", "REGISTRY_ADDRESS"),
+      providerOrAccount: account,
+    }
+  );
+
+  const tx = await registry.freeze(pollId);
+  await provider.waitForTransaction(tx.transaction_hash);
+  console.log(`Voter set for poll ${pollId} frozen: ${tx.transaction_hash}`);
 }
 
 async function createPoll(
@@ -202,18 +217,21 @@ async function getPoll(pollId: number) {
     }
   );
   const data = await poll.get_poll(pollId);
-  console.log(JSON.stringify(data, null, 2));
+  console.log(JSON.stringify(data, (_, v) => typeof v === "bigint" ? v.toString() : v, 2));
 }
 
 async function main() {
   const command = process.argv[2];
 
   switch (command) {
-    case "add-voters":
-      await addVoters(process.argv.slice(3));
+    case "add-eligible":
+      await addEligible(Number(process.argv[3]), process.argv.slice(4));
+      return;
+    case "register-commitment":
+      await registerCommitment(Number(process.argv[3]), process.argv[4]);
       return;
     case "freeze-registry":
-      await freezeRegistry();
+      await freezeRegistry(Number(process.argv[3]));
       return;
     case "create-poll":
       await createPoll(
@@ -240,8 +258,9 @@ async function main() {
       console.log(
         [
           "Usage:",
-          "  npm run interact -- add-voters <commitment1> <commitment2> ...",
-          "  npm run interact -- freeze-registry",
+          "  npm run interact -- add-eligible <pollId> <address1> <address2> ...",
+          "  npm run interact -- register-commitment <pollId> <commitment>",
+          "  npm run interact -- freeze-registry <pollId>",
           "  npm run interact -- create-poll <pollId> <optionsCount> <startTime> <endTime> <root>",
           "  npm run interact -- submit-vote <samples/worldcoin_calldata.json>",
           "  npm run interact -- get-tally <pollId> <option>",

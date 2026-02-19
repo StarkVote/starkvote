@@ -32,7 +32,6 @@ pub trait IPoll<TContractState> {
     fn is_nullifier_used(self: @TContractState, poll_id: u64, nullifier_hash: u256) -> bool;
     fn get_poll(self: @TContractState, poll_id: u64) -> PollData;
     fn finalize(ref self: TContractState, poll_id: u64);
-    fn get_admin(self: @TContractState) -> ContractAddress;
     fn get_registry(self: @TContractState) -> ContractAddress;
     fn get_verifier(self: @TContractState) -> ContractAddress;
 }
@@ -40,7 +39,7 @@ pub trait IPoll<TContractState> {
 #[starknet::contract]
 mod Poll {
     use super::PollData;
-    use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+    use starknet::{ContractAddress, get_block_timestamp};
     use starknet::storage::{
         Map, StoragePointerReadAccess, StoragePointerWriteAccess,
         StorageMapReadAccess, StorageMapWriteAccess,
@@ -52,7 +51,6 @@ mod Poll {
 
     #[storage]
     struct Storage {
-        admin: ContractAddress,
         registry: ContractAddress,
         verifier: ContractAddress,
         polls: Map<u64, PollData>,
@@ -97,11 +95,9 @@ mod Poll {
     #[constructor]
     fn constructor(
         ref self: ContractState,
-        admin: ContractAddress,
         registry: ContractAddress,
         verifier: ContractAddress
     ) {
-        self.admin.write(admin);
         self.registry.write(registry);
         self.verifier.write(verifier);
     }
@@ -130,15 +126,12 @@ mod Poll {
             end_time: u64,
             merkle_root: u256
         ) {
-            let caller = get_caller_address();
-            assert(caller == self.admin.read(), 'Only admin can create polls');
-
             let existing_poll = self.polls.read(poll_id);
             assert(!existing_poll.exists, 'Poll already exists');
 
             let registry_address = self.registry.read();
             let registry = IVoterSetRegistryDispatcher { contract_address: registry_address };
-            assert(registry.is_frozen(), 'Registry must be frozen');
+            assert(registry.is_frozen(poll_id), 'Voter set must be frozen');
 
             assert(options_count > 0, 'Must have at least 1 option');
             assert(start_time < end_time, 'Invalid time bounds');
@@ -267,10 +260,6 @@ mod Poll {
             self.polls.write(poll_id, finalized_poll);
 
             self.emit(PollFinalized { poll_id, winner_option, max_votes });
-        }
-
-        fn get_admin(self: @ContractState) -> ContractAddress {
-            self.admin.read()
         }
 
         fn get_registry(self: @ContractState) -> ContractAddress {

@@ -80,23 +80,23 @@ async function main() {
   console.log("StarkVote Full Deployment");
   console.log("==========================================\n");
 
-  const adminAddressEnv = process.env.ADMIN_ADDRESS;
+  const deployerAddressEnv = process.env.ACCOUNT_ADDRESS;
   const privateKeyEnv = process.env.PRIVATE_KEY;
   const rpcUrl = process.env.RPC_URL || "https://rpc.starknet-testnet.lava.build";
-  if (!adminAddressEnv || !privateKeyEnv) {
-    throw new Error("Missing ADMIN_ADDRESS or PRIVATE_KEY in zk/.env");
+  if (!deployerAddressEnv || !privateKeyEnv) {
+    throw new Error("Missing ACCOUNT_ADDRESS or PRIVATE_KEY in zk/.env");
   }
 
-  const adminAddress = normalizeHex(adminAddressEnv);
+  const deployerAddress = normalizeHex(deployerAddressEnv);
   const privateKey = normalizeHex(privateKeyEnv);
 
-  console.log(`Admin: ${adminAddress}`);
+  console.log(`Deployer: ${deployerAddress}`);
   console.log(`RPC:   ${rpcUrl}\n`);
 
   const provider = new RpcProvider({ nodeUrl: rpcUrl });
   const account = new Account({
     provider,
-    address: adminAddress,
+    address: deployerAddress,
     signer: new Signer(privateKey),
     cairoVersion: "1",
   });
@@ -127,13 +127,13 @@ async function main() {
   // 3. Declare + Deploy VoterSetRegistry
   console.log("3/4 VoterSetRegistry...");
   const registryClassHash = await declareIfNeeded(account, provider, "VoterSetRegistry", registry);
-  const registryAddress = await deployContract(account, provider, registryClassHash, [adminAddress]);
+  const registryAddress = await deployContract(account, provider, registryClassHash, []);
   console.log(`  Address: ${registryAddress}\n`);
 
   // 4. Declare + Deploy Poll
   console.log("4/4 Poll...");
   const pollClassHash = await declareIfNeeded(account, provider, "Poll", poll);
-  const pollAddress = await deployContract(account, provider, pollClassHash, [adminAddress, registryAddress, verifierAddress]);
+  const pollAddress = await deployContract(account, provider, pollClassHash, [registryAddress, verifierAddress]);
   console.log(`  Address: ${pollAddress}\n`);
 
   // Save addresses
@@ -145,7 +145,7 @@ async function main() {
   const data = {
     network: "sepolia",
     deployed_at: new Date().toISOString(),
-    admin_address: adminAddress,
+    deployer_address: deployerAddress,
     groth16_verifier_address: groth16Address,
     verifier_address: verifierAddress,
     registry_address: registryAddress,

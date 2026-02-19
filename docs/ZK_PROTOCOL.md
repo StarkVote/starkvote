@@ -112,9 +112,9 @@ StarkVote adopts this same interface (hence `IWorldcoinVerifier` in our code). W
           │                                               │
           ▼                                               │
  ┌───────────────────┐                       ┌────────────┴─────────────┐
- │ Garaga Python lib  │                       │ Semaphore30Verifier      │
+ │ Garaga npm package │                       │ Semaphore30Verifier      │
  │   calldata gen     │ → 1900 felt252 ──────►│   (Worldcoin interface)  │
- │   (python3.10)     │   with hints          │   wraps Garaga verifier  │
+ │   (WASM)           │   with hints          │   wraps Garaga verifier  │
  └───────────────────┘                       └────────────▲─────────────┘
                                                           │
                                               ┌───────────┴─────────────┐
@@ -232,9 +232,10 @@ identity.commitment;                      // → public commitment (u256)
 identity.secretScalar;                    // → private (never shared)
 ```
 
-The admin collects commitments from voters and writes them on-chain:
+The poll creator whitelists eligible wallet addresses per poll, then each voter self-registers their commitment:
 ```
-VoterSetRegistry.add_voter(commitment)   // stores as leaves[i]
+VoterSetRegistry.add_eligible_batch(poll_id, [addr0, addr1, ...])  // poll creator whitelists
+VoterSetRegistry.register_commitment(poll_id, commitment)           // voter self-registers as leaves[i]
 ```
 
 ---
@@ -489,7 +490,7 @@ emit Voted { poll_id, nullifier_hash, option };
 
 Garaga uses a **hints-based approach**:
 
-- The heavy computation (Miller loop, final exponentiation) is done off-chain by the Python calldata generator.
+- The heavy computation (Miller loop, final exponentiation) is done off-chain by the calldata generator (Garaga WASM).
 - The off-chain code produces "hints" — intermediate values that the on-chain verifier can cheaply check rather than recompute.
 - The on-chain contract (~2MB due to precomputed constants from the verification key) validates that the hints are consistent and the pairing equation holds.
 
@@ -515,8 +516,8 @@ Garaga's `groth16_calldata_from_vk_and_proof()` produces an array of felt252 val
 
 **Important**: The first element is a length prefix. Since `starknet.js` adds its own `Span` length when serializing arrays, the prefix must be stripped to avoid a double-length error:
 
-```python
-calldata_no_prefix = calldata[1:]
+```typescript
+const calldataNoPrefix = calldata.slice(1);
 ```
 
 ---
@@ -526,27 +527,28 @@ calldata_no_prefix = calldata[1:]
 ```
 ┌─── SETUP (one-time) ─────────────────────────────────────────────────┐
 │                                                                       │
-│  Admin deploys contracts:                                            │
+│  Deployer deploys contracts:                                         │
 │    Groth16VerifierBN254 ← generated from verification_key30.json     │
 │    Semaphore30Verifier  ← wraps Groth16VerifierBN254                 │
 │    VoterSetRegistry     ← empty                                      │
 │    Poll                 ← linked to Registry + Verifier              │
 │                                                                       │
-│  Voters generate identities:                                         │
-│    secret_scalar → commitment = Poseidon(secret_scalar)              │
-│    Share commitment with admin, keep secret_scalar private           │
+│  Poll creator whitelists eligible addresses for poll:                │
+│    VoterSetRegistry.add_eligible_batch(poll_id, [addr0, addr1, ...]) │
 │                                                                       │
-│  Admin registers voters + freezes:                                   │
-│    VoterSetRegistry.add_voter(commitment_0)                          │
-│    VoterSetRegistry.add_voter(commitment_1)                          │
-│    ...                                                                │
-│    VoterSetRegistry.freeze()                                         │
+│  Each voter generates identity + self-registers for poll:            │
+│    secret_scalar → commitment = Poseidon(secret_scalar)              │
+│    VoterSetRegistry.register_commitment(poll_id, commitment)         │
+│    (called from voter's eligible wallet address)                     │
+│                                                                       │
+│  Poll creator freezes the voter set for poll:                        │
+│    VoterSetRegistry.freeze(poll_id)                                  │
 │                                                                       │
 └───────────────────────────────────────────────────────────────────────┘
 
 ┌─── POLL CREATION (per poll) ──────────────────────────────────────────┐
 │                                                                       │
-│  Admin creates poll with snapshot of current voter set:              │
+│  Poll creator creates poll with snapshot of voter set:               │
 │    root = compute_merkle_root(all_leaves)                            │
 │    Poll.create_poll(poll_id, options_count, start, end, root)        │
 │                                                                       │
@@ -560,7 +562,7 @@ calldata_no_prefix = calldata[1:]
 │       private: { secret, siblings[30], pathIndex }                   │
 │       public:  { root, nullifier, signalHash, scopeHash }           │
 │  4. Generate Groth16 proof (snarkjs + wasm + zkey)                   │
-│  5. Format calldata (Garaga Python library)                          │
+│  5. Format calldata (Garaga WASM library)                            │
 │  6. Submit transaction:                                              │
 │       Poll.vote(poll_id, option, full_proof_with_hints)              │
 │                                                                       │
@@ -611,12 +613,12 @@ calldata_no_prefix = calldata[1:]
 | **Semaphore circuit** | Trusted | Open-source, audited, widely deployed |
 | **Groth16 trusted setup** | Trust-minimized | MPC ceremony — only 1 honest participant needed |
 | **Garaga verifier** | Trusted | Open-source, Starknet-specific implementation |
-| **Admin** | Semi-trusted | Controls voter set (auditable) but cannot forge votes or break anonymity |
+| **Poll creator** | Semi-trusted | Controls voter set (auditable) but cannot forge votes or break anonymity |
 | **Starknet L2** | Trusted for liveness | If the sequencer censors, votes cannot be submitted (but privacy is still preserved) |
 
 ### Known Limitations
 
-- **Voter set curated by admin**: The admin decides who can vote. This is publicly auditable (all leaves are on-chain) but still a trust point.
+- **Voter set curated by poll creator**: The poll creator decides which wallet addresses are eligible per poll. However, each voter self-registers their own cryptographic commitment, so the poll creator never handles secret key material. The eligible set and all registered commitments are publicly auditable on-chain.
 - **No receipt-freeness**: A voter who reveals their secret can prove how they voted, enabling coercion/vote-selling. This is inherent to all Semaphore-based schemes.
 - **Trusted setup**: Groth16 requires the ceremony. If all participants colluded (or the toxic waste was leaked), fake proofs could be created. In practice, this is considered safe for Semaphore's widely-participated ceremony.
 - **Transaction metadata**: While the vote content is anonymous, the transaction sender's address is visible. For full anonymity, voters should use a fresh account or have someone else submit their proof.

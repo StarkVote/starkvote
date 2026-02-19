@@ -24,6 +24,12 @@ function u256ToBigInt(value: any): bigint {
 }
 
 async function main() {
+  const pollId = Number(process.argv[2]);
+  if (!pollId && pollId !== 0) {
+    console.error("Usage: npm run fetch-leaves -- <pollId>");
+    process.exit(1);
+  }
+
   const configPath = path.join(__dirname, "../.local/contract_addresses.json");
   if (!fs.existsSync(configPath)) {
     throw new Error("Missing .local/contract_addresses.json. Run npm run deploy first.");
@@ -45,17 +51,17 @@ async function main() {
     providerOrAccount: provider,
   });
 
-  console.log(`Fetching leaves from ${registryAddress}`);
+  console.log(`Fetching leaves for poll ${pollId} from ${registryAddress}`);
 
-  const isFrozen = await registry.is_frozen();
-  const leafCountRaw = await registry.get_leaf_count();
+  const isFrozen = await registry.is_frozen(pollId);
+  const leafCountRaw = await registry.get_leaf_count(pollId);
   const leafCount = Number(leafCountRaw.toString());
   console.log(`is_frozen: ${isFrozen}`);
   console.log(`leaf_count: ${leafCount}`);
 
   const leaves: string[] = [];
   for (let i = 0; i < leafCount; i++) {
-    const leaf = await registry.get_leaf(i);
+    const leaf = await registry.get_leaf(pollId, i);
     leaves.push(u256ToBigInt(leaf).toString());
   }
 
@@ -68,6 +74,7 @@ async function main() {
     JSON.stringify(
       {
         registry_address: registryAddress,
+        poll_id: pollId,
         is_frozen: Boolean(isFrozen),
         leaf_count: leaves.length,
         leaves,

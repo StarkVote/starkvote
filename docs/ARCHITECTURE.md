@@ -31,19 +31,22 @@ Anonymous voting on Starknet using Semaphore v4 zero-knowledge proofs, verified 
 
 ### VoterSetRegistry (`contracts/src/voter_set_registry.cairo`)
 
-Stores an ordered list of voter identity commitments on-chain.
+Manages per-poll voter eligibility and commitment self-registration. Each poll has its own independent voter set.
 
-- **`add_voter(commitment: u256)`** — Admin appends a Semaphore identity commitment as a leaf.
-- **`freeze()`** — Locks the registry permanently. No more voters can be added.
-- **`get_leaf(index) / get_leaf_count()`** — Anyone can read all leaves and reconstruct the Merkle tree.
+- **`add_eligible_batch(poll_id, addresses)`** — The first caller for a given `poll_id` becomes its admin. Only the admin can add eligible addresses for that poll.
+- **`register_commitment(poll_id, commitment)`** — An eligible voter self-registers their Semaphore identity commitment. Each address can register exactly once per poll.
+- **`freeze(poll_id)`** — Only the poll admin can freeze. Locks the voter set permanently for that poll.
+- **`get_poll_admin(poll_id)`** — Returns the admin for a poll's voter set.
+- **`is_eligible(poll_id, address) / has_registered(poll_id, address)`** — Check eligibility and registration status.
+- **`get_leaf(poll_id, index) / get_leaf_count(poll_id)`** — Anyone can read all leaves and reconstruct the Merkle tree.
 
-Leaves are stored on-chain for public auditability. Anyone can verify the voter set.
+There is no global admin. Anyone can create a voter set for a new `poll_id` — the first caller becomes its admin. Each poll has a completely different voter set. Anonymity is preserved because voters submit their vote from a different address using ZK proofs.
 
 ### Poll (`contracts/src/poll.cairo`)
 
 Manages polls, verifies proofs, and tallies votes.
 
-- **`create_poll(poll_id, options_count, start_time, end_time, merkle_root)`** — Admin creates a poll snapshotting a Merkle root. Registry must be frozen.
+- **`create_poll(poll_id, options_count, start_time, end_time, merkle_root)`** — Anyone can create a poll with a Merkle root. The voter set for that `poll_id` must be frozen in the registry.
 - **`vote(poll_id, option, full_proof_with_hints)`** — Voter submits a Groth16 proof. The contract:
   1. Verifies the proof via Semaphore30Verifier
   2. Extracts public inputs: `[root, nullifier_hash, signal_hash, scope_hash]`
@@ -103,8 +106,8 @@ fn semaphore_hash(value: u256) -> u256 {
 
 Garaga's `groth16_calldata_from_vk_and_proof` produces a calldata array with a length prefix as the first element. Since `starknet.js` adds its own `Span` length when serializing, the prefix must be stripped before sending:
 
-```python
-calldata_no_prefix = calldata[1:]  # strip Garaga's length prefix
+```typescript
+const calldataNoPrefix = calldata.slice(1);  // strip Garaga's length prefix
 ```
 
 ### Nullifier
@@ -113,11 +116,12 @@ Each proof produces a deterministic `nullifier_hash = f(identity_secret, scope)`
 
 ## Security Model
 
-**What the admin controls:**
-- Which identity commitments are included in the voter set
+**What the poll creator controls:**
+- Which wallet addresses are eligible to register as voters for their poll
 - Poll parameters (options, timing)
 
-**What the admin cannot do:**
+**What the poll creator cannot do:**
+- Register a commitment on behalf of a voter (each voter must self-register)
 - Forge votes (requires voter's private identity)
 - Change the voter set after freezing
 - Link a vote to a specific voter
@@ -137,7 +141,7 @@ Each proof produces a deterministic `nullifier_hash = f(identity_secret, scope)`
 
 | Contract | Address |
 |----------|---------|
-| Groth16VerifierBN254 | `0x7d15353ab2ac92ffe753f46d7a950b0acb76c9b30f036c54517b48ea71c16c4` |
-| Semaphore30Verifier | `0x2ef5f152e35a72df2648c76296400df2f3292a2b4843216d694f0701b59c584` |
-| VoterSetRegistry | `0x5cbe6e6e10f579e823ca21e2b1a3b985564e803365a0f520532de124fd95485` |
-| Poll | `0x7b5d336105939546f8f3d65f5d21886568c17c29cc89615d40e1f95f552d324` |
+| Groth16VerifierBN254 | `0x7b36d8d96916d4353b70982e6781c5f1373487bafc0afa60f433f1545346a68` |
+| Semaphore30Verifier | `0x549185d992ed265a0fb3fb17eea5e7ee753ea02c8d6b4608f6c83ae895d4dd5` |
+| VoterSetRegistry | `0x524442ab0c7bae6a9a0ce2b00ac6d621b9502c454ffdc204c9b48a2c37a68c` |
+| Poll | `0x5789a8b8844df95cd10689b3d5f2273ab4e769a4e5c1c6f062749e0d47aab73` |
