@@ -265,7 +265,7 @@ Attempting to submit the same proof again should fail with `'Nullifier already u
 | finalize | `npm run interact -- finalize <pollId>` |
 | get-poll | `npm run interact -- get-poll <pollId>` |
 
-## Deployed Contracts (Sepolia)
+## Deployed Contracts (Starknet Sepolia)
 
 | Contract | Address |
 |----------|---------|
