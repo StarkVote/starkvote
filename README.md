@@ -1,275 +1,53 @@
 # StarkVote
 
-Anonymous voting on Starknet using Semaphore v4 zero-knowledge proofs. Voters prove group membership without revealing their identity, and votes are tallied on-chain with double-vote prevention via nullifiers.
+> *On every blockchain today, your vote is public. Your wallet is permanently linked to your choice — visible to anyone, forever. StarkVote changes that.*
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for protocol details.
+StarkVote is a fully on-chain anonymous voting system built on Starknet. Voters prove they are eligible and cast their ballot — without anyone, including the organizer, being able to see how they voted or even that they voted.
 
-## Prerequisites
+No trusted server. No privacy middleman. Just math.
 
-- [Scarb 2.14.0](https://docs.swmansion.com/scarb/download.html) (Cairo build toolchain)
-- [Node.js 18+](https://nodejs.org/) with npm
-- A Starknet Sepolia wallet with testnet ETH/STRK
+## Why this is hard
 
-## Project Structure
+**Most "private" voting systems are private in name only.** They encrypt votes and trust a server to decrypt them honestly. That just moves the problem — someone still has the key.
 
-```
-contracts/           Cairo smart contracts
-  src/
-    poll.cairo                 Poll creation, proof verification, tallying
-    voter_set_registry.cairo   Per-poll eligible address whitelist + commitment self-registration
-    verifier.cairo             Semaphore30Verifier (wraps Garaga)
-    groth16_verifier.cairo     Garaga-generated BN254 verifier
-  garaga/                      Vendored Garaga v1.0.1 library
+StarkVote has no such escape hatch. Eligibility is proven with a zero-knowledge proof using [Semaphore v4](https://semaphore.pse.dev/): you convince the contract you belong to the voter list without revealing which entry is yours. No operator, no oracle, no trusted decryptor.
 
-zk/                  Off-chain scripts (TypeScript)
-  scripts/
-    gen_identity_commitment.ts   Generate Semaphore identity
-    deploy_contracts.ts          Deploy all 4 contracts
-    interact.ts                  Add eligible addresses, register commitments, create polls, vote, tally
-    fetch_leaves.ts              Fetch on-chain voter leaves for a poll
-    compute_merkle_root.ts       Build Merkle tree from leaves
-    gen_proof.ts                 Generate Semaphore ZK proof
-    gen_calldata.ts              Format proof as Garaga calldata (WASM)
-  artifacts/                     Semaphore circuit files (wasm, zkey)
-  .local/                        Generated session data (gitignored)
-  samples/                       Generated proof outputs (gitignored)
+Making this work fully on-chain in Cairo required integrating [Garaga](https://github.com/keep-starknet-strange/garaga) — a Cairo-native Groth16 BN254 verifier — and bridging the cryptographic gap between Semaphore's proof format and Cairo's execution model. The result: **proof verification is entirely on-chain, trustless, and permanent.**
 
-docs/
-  ARCHITECTURE.md    Protocol architecture and cryptographic details
-  ZK_PROTOCOL.md     Detailed ZK proof explanation
-```
-
-## Setup
-
-### 1. Build contracts
-
-The contracts include a vendored copy of [Garaga v1.0.1](https://github.com/keep-starknet-strange/garaga) for Groth16 BN254 verification.
-
-```bash
-cd contracts
-scarb build
-```
-
-This produces compiled artifacts in `contracts/target/dev/`.
-
-### 2. Install Node.js dependencies
-
-```bash
-cd zk
-npm install
-```
-
-### 3. Configure environment
-
-```bash
-cp zk/.env.example zk/.env
-```
-
-Edit `zk/.env` with your Starknet Sepolia wallet credentials:
-
-```env
-ACCOUNT_ADDRESS=0x...
-PRIVATE_KEY=0x...
-RPC_URL=https://starknet-sepolia.public.blastapi.io/rpc/v0_7
-```
-
-> **Note:** Deploying the Groth16 verifier (~2MB contract) requires a private RPC (e.g. Alchemy, Infura). Public RPCs may reject the large declare transaction.
-
-### 4. Download Semaphore artifacts
-
-```bash
-curl -L -o zk/artifacts/semaphore30.wasm \
-  https://snark-artifacts.pse.dev/semaphore/latest/semaphore-30.wasm
-
-curl -L -o zk/artifacts/semaphore30.zkey \
-  https://snark-artifacts.pse.dev/semaphore/latest/semaphore-30.zkey
-```
-
-## End-to-End Testing Guide
-
-Run all commands from the `zk/` directory.
-
----
-
-### Phase 1: Setup
-
-#### Step 1: Generate identity
-
-```bash
-npm run gen-identity
-```
-
-Creates `zk/.local/identity.json` with a Semaphore identity (private key + commitment).
-
-#### Step 2: Deploy contracts
-
-```bash
-npm run deploy
-```
-
-Deploys all 4 contracts: Groth16VerifierBN254, Semaphore30Verifier, VoterSetRegistry, Poll. Addresses are saved to `zk/.local/contract_addresses.json`.
-
----
-
-### Phase 2: Voter Registration (per poll)
-
-Each poll has its own independent voter set. The first caller to `add-eligible` for a given `poll_id` becomes its admin. The `poll_id` must match the one used when creating the poll in Phase 3.
-
-#### Step 3: Add eligible addresses (poll creator)
-
-```bash
-# Whitelist wallet addresses for poll 1 (first call makes you the admin)
-npm run interact -- add-eligible 1 <address1> [address2 ...]
-```
-
-#### Step 4: Register commitment (each voter)
-
-Each eligible voter configures their own wallet in `zk/.env`, then self-registers their Semaphore commitment:
-
-```bash
-# Use the commitment from Step 1
-npm run interact -- register-commitment 1 <commitment>
-```
-
-#### Step 5: Freeze voter set
-
-```bash
-npm run interact -- freeze-registry 1
-```
-
-**Locks the voter set for poll 1 permanently. Only the poll admin can freeze. This must be done before creating the poll.**
-
----
-
-### Phase 3: Poll Creation
-
-#### Step 6: Fetch on-chain leaves
-
-```bash
-npm run fetch-leaves -- 1
-```
-
-Reads all committed leaves for poll 1 from the registry. Saved to `zk/.local/leaves.json`.
-
-#### Step 7: Compute Merkle root
-
-```bash
-npm run compute-root
-```
-
-Builds the depth-30 Poseidon Merkle tree. Saved to `zk/.local/merkle_root.json`.
-
-#### Step 8: Create poll
-
-```bash
-# Arguments: poll_id, options_count, start_time, end_time, merkle_root
-START=$(( $(date +%s) - 3600 ))
-END=$(( $(date +%s) + 300 ))
-ROOT=$(jq -r '.root' ./.local/merkle_root.json)
-
-npm run interact -- create-poll 1 2 $START $END $ROOT
-```
-
----
-
-### Phase 4: Voting
-
-#### Step 9: Create proof config
-
-Create `zk/.local/proof_config.json`:
-
-```json
-{
-  "poll_id": 1,
-  "option": 0,
-  "leaf_index": 0
-}
-```
-
-#### Step 10: Generate ZK proof
-
-```bash
-npm run gen-proof
-```
-
-Generates the Semaphore Groth16 proof. Outputs `zk/samples/proof.json` and `zk/samples/public.json`.
-
-#### Step 11: Format calldata for Garaga
-
-```bash
-npm run format-calldata
-```
-
-Converts the proof into Garaga-compatible calldata using Garaga's WASM library. Outputs `zk/samples/worldcoin_calldata.json`.
-
-#### Step 12: Submit vote
-
-```bash
-npm run interact -- submit-vote samples/worldcoin_calldata.json
-```
-
-Submits the vote transaction with the ZK proof. The contract verifies the proof on-chain.
-
----
-
-### Phase 5: Results
-
-#### Step 13: Check results
-
-```bash
-# Get vote count for poll 1, option 0
-npm run interact -- get-tally 1 0
-```
-
-#### Step 14: Finalize poll
-
-After `end_time` has passed, anyone can finalize the poll to compute and store the winner on-chain:
-
-```bash
-npm run finalize-poll -- 1
-
-# Or equivalently:
-npm run interact -- finalize 1
-
-# View full poll data including winner
-npm run interact -- get-poll 1
-```
-
-#### Verify double-vote protection
-
-Attempting to submit the same proof again should fail with `'Nullifier already used'`.
-
-## Script Reference
-
-| Script | Command | Description |
-|--------|---------|-------------|
-| gen-identity | `npm run gen-identity` | Generate Semaphore identity |
-| deploy | `npm run deploy` | Deploy all contracts |
-| interact | `npm run interact -- <cmd>` | Contract interaction (see subcommands) |
-| fetch-leaves | `npm run fetch-leaves -- <pollId>` | Fetch voter leaves for a poll |
-| compute-root | `npm run compute-root` | Compute Merkle root from leaves |
-| gen-proof | `npm run gen-proof` | Generate Semaphore ZK proof |
-| format-calldata | `npm run format-calldata` | Format proof as Garaga calldata |
-| finalize-poll | `npm run finalize-poll -- <pollId>` | Finalize poll and store winner |
-
-### interact subcommands
-
-| Subcommand | Usage |
-|------------|-------|
-| add-eligible | `npm run interact -- add-eligible <pollId> <address1> [address2 ...]` |
-| register-commitment | `npm run interact -- register-commitment <pollId> <commitment>` |
-| freeze-registry | `npm run interact -- freeze-registry <pollId>` |
-| create-poll | `npm run interact -- create-poll <pollId> <optionsCount> <startTime> <endTime> <root>` |
-| submit-vote | `npm run interact -- submit-vote <calldata.json>` |
-| get-tally | `npm run interact -- get-tally <pollId> <option>` |
-| finalize | `npm run interact -- finalize <pollId>` |
-| get-poll | `npm run interact -- get-poll <pollId>` |
-
-## Deployed Contracts (Starknet Sepolia)
 
 | Contract | Address |
-|----------|---------|
+|---|---|
 | Groth16VerifierBN254 | `0x7b36d8d96916d4353b70982e6781c5f1373487bafc0afa60f433f1545346a68` |
 | Semaphore30Verifier | `0x549185d992ed265a0fb3fb17eea5e7ee753ea02c8d6b4608f6c83ae895d4dd5` |
 | VoterSetRegistry | `0x524442ab0c7bae6a9a0ce2b00ac6d621b9502c454ffdc204c9b48a2c37a68c` |
 | Poll | `0x5789a8b8844df95cd10689b3d5f2273ab4e769a4e5c1c6f062749e0d47aab73` |
+
+
+## How it works
+
+**1. Registration** — The organizer whitelists eligible wallet addresses. Each voter self-registers a *commitment* (a fingerprint of their secret identity, revealing nothing about them) on-chain. The list is then frozen.
+
+**2. Voting** — The voter's device generates a ZK proof:
+> *"I know a secret matching one of the commitments in this voter list, and I vote for option X."*
+
+The proof is submitted with a one-time *nullifier* that prevents double-voting. The contract verifies the proof on-chain and records the vote.
+
+**3. Results** — After the poll closes, anyone triggers the tally. The winner is computed and stored on-chain. All votes are counted. No vote is traceable.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Blockchain | Starknet Sepolia |
+| Smart contracts | Cairo (Scarb 2.14.0) |
+| ZK proofs | Semaphore v4 — Groth16 BN254 |
+| On-chain verifier | Garaga v1.0.1 |
+| Off-chain scripts | TypeScript / Node.js |
+
+## Docs
+
+| | |
+|---|---|
+| Manual testing guide | [docs/TESTING.md](docs/TESTING.md) |
+| Protocol architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| ZK proof details | [docs/ZK_PROTOCOL.md](docs/ZK_PROTOCOL.md) |
