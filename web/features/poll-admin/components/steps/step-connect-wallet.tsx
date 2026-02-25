@@ -1,116 +1,38 @@
-import {
-  INPUT_CLASS,
-  PRIMARY_BUTTON_CLASS,
-  SECONDARY_BUTTON_CLASS,
-} from "../../constants";
+import { PRIMARY_BUTTON_CLASS } from "../../constants";
 
 type StepConnectWalletProps = {
-  rpcUrl: string;
-  pollAddress: string;
-  registryAddress: string;
-  pollIdInput: string;
   isWalletConnected: boolean;
   walletAddress: string;
-  walletChainId: string;
   isBusy: boolean;
-  onRpcUrlChange: (value: string) => void;
-  onPollAddressChange: (value: string) => void;
-  onRegistryAddressChange: (value: string) => void;
-  onPollIdChange: (value: string) => void;
   onConnect: () => Promise<void>;
   onDisconnect: () => Promise<void>;
 };
 
 export function StepConnectWallet({
-  rpcUrl,
-  pollAddress,
-  registryAddress,
-  pollIdInput,
   isWalletConnected,
-  walletAddress,
-  walletChainId,
   isBusy,
-  onRpcUrlChange,
-  onPollAddressChange,
-  onRegistryAddressChange,
-  onPollIdChange,
   onConnect,
-  onDisconnect,
 }: StepConnectWalletProps) {
+  if (isWalletConnected) {
+    return null;
+  }
+
   return (
-    <div>
-      <h2 className="text-lg font-semibold text-zinc-950">Step 1: Connect wallet</h2>
-      <p className="mt-1 text-sm text-zinc-600">
-        Set RPC/contracts and connect your Starknet wallet. This unlocks on-chain admin actions.
-      </p>
-
-      <div className="mt-5 grid gap-4">
-        <label className="block text-sm font-medium text-zinc-700">
-          RPC URL
-          <input
-            className={INPUT_CLASS}
-            value={rpcUrl}
-            onChange={(event) => onRpcUrlChange(event.target.value)}
-            placeholder="https://rpc.starknet-..."
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-zinc-700">
-          Poll contract
-          <input
-            className={INPUT_CLASS}
-            value={pollAddress}
-            onChange={(event) => onPollAddressChange(event.target.value)}
-            placeholder="0x..."
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-zinc-700">
-          Registry contract
-          <input
-            className={INPUT_CLASS}
-            value={registryAddress}
-            onChange={(event) => onRegistryAddressChange(event.target.value)}
-            placeholder="0x..."
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-zinc-700">
-          Poll ID
-          <input
-            className={INPUT_CLASS}
-            value={pollIdInput}
-            onChange={(event) => onPollIdChange(event.target.value)}
-            placeholder="1"
-          />
-        </label>
+    <div className="flex flex-col items-center gap-5 py-6">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04]">
+        <svg className="h-6 w-6 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
+        </svg>
       </div>
-
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        {isWalletConnected ? (
-          <button
-            type="button"
-            className={SECONDARY_BUTTON_CLASS}
-            onClick={() => void onDisconnect()}
-            disabled={isBusy}
-          >
-            Disconnect Wallet
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={PRIMARY_BUTTON_CLASS}
-            onClick={() => void onConnect()}
-            disabled={isBusy}
-          >
-            Connect Wallet
-          </button>
-        )}
-        <span className="text-sm text-zinc-600">
-          {isWalletConnected ? walletAddress : "No wallet connected"}
-        </span>
-      </div>
-      {walletChainId ? <p className="mt-2 text-xs text-zinc-500">Chain ID: {walletChainId}</p> : null}
+      <p className="text-sm text-slate-500">Connect your Starknet wallet to begin</p>
+      <button
+        type="button"
+        className={PRIMARY_BUTTON_CLASS}
+        onClick={() => void onConnect()}
+        disabled={isBusy}
+      >
+        Connect Wallet
+      </button>
     </div>
   );
 }

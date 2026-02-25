@@ -1,4 +1,3 @@
-import { formatUnixSeconds } from "@/lib/starkvote";
 import {
   INPUT_CLASS,
   PRIMARY_BUTTON_CLASS,
@@ -39,59 +38,33 @@ export function StepCreatePoll({
   onCreatePoll,
   onComputeSnapshotRoot,
 }: StepCreatePollProps) {
-  const durationSecs = parseInt(durationInput, 10);
-  const now = Math.floor(Date.now() / 1000);
-  const validDuration = Number.isFinite(durationSecs) && durationSecs > 0;
-
   return (
     <div>
-      <h2 className="text-lg font-semibold text-zinc-950">Step 4: Create poll</h2>
-      <p className="mt-1 text-sm text-zinc-600">
-        Calls <code>create_poll</code> with options, duration, and snapshot Merkle root.
-        Start time is set to now, end time is now + duration.
-      </p>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm font-medium text-zinc-700">
-          Options count
-          <input
-            className={INPUT_CLASS}
-            value={optionsCountInput}
-            onChange={(event) => onOptionsCountChange(event.target.value)}
-            placeholder="2"
-          />
-        </label>
-        <label className="block text-sm font-medium text-zinc-700">
-          Duration (seconds)
-          <input
-            className={INPUT_CLASS}
-            value={durationInput}
-            onChange={(event) => onDurationChange(event.target.value)}
-            placeholder="e.g. 120"
-          />
-          <span className="mt-1 block text-xs text-zinc-500">
-            {validDuration
-              ? `Poll will last ${durationSecs >= 60 ? `${Math.floor(durationSecs / 60)}m ${durationSecs % 60}s` : `${durationSecs}s`}`
-              : "Enter duration in seconds"}
-          </span>
-        </label>
-        <label className="block text-sm font-medium text-zinc-700 sm:col-span-2">
-          Snapshot Merkle root (decimal or hex)
-          <input
-            className={INPUT_CLASS}
-            value={merkleRootInput}
-            onChange={(event) => onMerkleRootChange(event.target.value)}
-            placeholder="0x..."
-          />
-        </label>
-        <label className="block text-sm font-medium text-zinc-700 sm:col-span-2">
-          Option labels (one per line)
-          <textarea
-            className={TEXTAREA_CLASS}
-            value={optionLabelsInput}
-            onChange={(event) => onOptionLabelsChange(event.target.value)}
-            placeholder={"Yes\\nNo"}
-          />
-        </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input
+          className={INPUT_CLASS}
+          value={optionsCountInput}
+          onChange={(event) => onOptionsCountChange(event.target.value)}
+          placeholder="Options count"
+        />
+        <input
+          className={INPUT_CLASS}
+          value={durationInput}
+          onChange={(event) => onDurationChange(event.target.value)}
+          placeholder="Duration (seconds)"
+        />
+        <input
+          className={`${INPUT_CLASS} sm:col-span-2`}
+          value={merkleRootInput}
+          onChange={(event) => onMerkleRootChange(event.target.value)}
+          placeholder="Snapshot Merkle root"
+        />
+        <textarea
+          className={`${TEXTAREA_CLASS} sm:col-span-2`}
+          value={optionLabelsInput}
+          onChange={(event) => onOptionLabelsChange(event.target.value)}
+          placeholder="Option labels (one per line)"
+        />
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
         <button
@@ -100,7 +73,7 @@ export function StepCreatePoll({
           onClick={() => void onComputeSnapshotRoot()}
           disabled={isBusy || isComputingRoot}
         >
-          {isComputingRoot ? "Computing root..." : "Auto Compute Root"}
+          {isComputingRoot ? "Computing..." : "Auto Compute Root"}
         </button>
         <button
           type="button"
@@ -111,10 +84,6 @@ export function StepCreatePoll({
           {busyAction === "create_poll" ? "Submitting..." : "Create Poll"}
         </button>
       </div>
-      <p className="mt-3 text-xs text-zinc-500">
-        Start: now ({formatUnixSeconds(now)}) | End:{" "}
-        {validDuration ? formatUnixSeconds(now + durationSecs) : "-"}
-      </p>
     </div>
   );
 }

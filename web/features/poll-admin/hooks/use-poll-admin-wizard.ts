@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { byteArray, shortString, type AccountInterface } from "starknet";
 import { Group } from "@semaphore-protocol/group";
 import { connect, disconnect } from "starknetkit";
@@ -46,6 +46,7 @@ export type UsePollAdminWizardResult = {
   steps: typeof WIZARD_STEPS;
   lifecycle: LifecycleBadge;
   notice: Notice | null;
+  clearNotice: () => void;
   status: PollStatus | null;
   lastTxHash: string;
   busyAction: BusyAction;
@@ -215,7 +216,9 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
   const [walletAddress, setWalletAddress] = useState("");
   const [walletChainId, setWalletChainId] = useState("");
 
-  const [pollIdInput, setPollIdInput] = useState("1");
+  const [pollIdInput, setPollIdInput] = useState(() =>
+    String(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)),
+  );
   const [eligibleInput, setEligibleInput] = useState("");
 
   const [optionsCountInput, setOptionsCountInput] = useState("2");
@@ -229,6 +232,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [isComputingRoot, setIsComputingRoot] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const hasAutoAdvanced = useRef(false);
 
   const isWalletConnected = Boolean(walletAccount && walletAddress);
   const isBusy = Boolean(busyAction);
@@ -264,7 +268,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       const chainIdFromConnect = result.connectorData?.chainId;
       setWalletChainId(chainIdFromConnect ? chainIdFromConnect.toString() : "");
       setCurrentStep((value) => Math.max(value, 2));
-      setNotice({ type: "success", message: `Connected wallet ${address}` });
+      setNotice(null);
     } catch (error) {
       setNotice({ type: "error", message: toErrorMessage(error) });
     }
@@ -309,6 +313,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
         setWalletAddress(address);
         const chainIdFromConnect = result.connectorData?.chainId;
         setWalletChainId(chainIdFromConnect ? chainIdFromConnect.toString() : "");
+        setCurrentStep((value) => Math.max(value, 2));
       } catch {
         // No previous session is expected for first-time users.
       }
@@ -326,6 +331,13 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       setCurrentStep(maxUnlockedStep);
     }
   }, [currentStep, maxUnlockedStep]);
+
+  useEffect(() => {
+    if (status && !hasAutoAdvanced.current) {
+      hasAutoAdvanced.current = true;
+      setCurrentStep((value) => Math.max(value, maxUnlockedStep));
+    }
+  }, [status, maxUnlockedStep]);
 
   const refreshStatus = useCallback(
     async (showNotice = true) => {
@@ -726,6 +738,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
     steps: WIZARD_STEPS,
     lifecycle,
     notice,
+    clearNotice: useCallback(() => setNotice(null), []),
     status,
     lastTxHash,
     busyAction,

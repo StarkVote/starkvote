@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 
-import { formatUnixSeconds } from "@/lib/starkvote";
-
 import { PRIMARY_BUTTON_CLASS } from "../../constants";
 import type { Tally } from "../../types";
 
@@ -54,35 +52,54 @@ export function StepManagePoll({
 }: StepManagePollProps) {
   const remaining = useCountdown(endTime);
   const ended = endTime > 0 && remaining <= 0;
+  const maxVotes = Math.max(1, ...tallies.map((t) => t.votes));
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-zinc-950">Step 5: Manage and finalize</h2>
-      <p className="mt-1 text-sm text-zinc-600">
-        Monitor option tallies and finalize after the poll ends. Tallies refresh automatically.
-      </p>
-
       {hasPoll && endTime > 0 ? (
-        <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
+        <div className="mb-5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3">
           {finalized ? (
-            <p className="text-sm font-medium text-emerald-700">Poll finalized.</p>
+            <p className="text-sm font-medium text-emerald-400">Poll finalized.</p>
           ) : ended ? (
-            <p className="text-sm font-medium text-amber-700">
-              Poll ended ({formatUnixSeconds(endTime)}). Ready to finalize.
-            </p>
+            <p className="text-sm font-medium text-amber-400">Poll ended. Ready to finalize.</p>
           ) : (
-            <p className="text-sm font-medium text-zinc-700">
-              Poll ends in{" "}
-              <span className="font-semibold text-zinc-900">
+            <p className="text-sm text-slate-400">
+              Ends in{" "}
+              <span className="font-semibold text-white">
                 {formatCountdown(remaining)}
-              </span>{" "}
-              ({formatUnixSeconds(endTime)})
+              </span>
             </p>
           )}
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="space-y-2">
+        {hasPoll && tallies.length ? (
+          tallies.map((item) => (
+            <div
+              key={item.option}
+              className="relative overflow-hidden rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3"
+            >
+              <div
+                className="absolute inset-y-0 left-0 bg-violet-500/10 transition-all duration-500"
+                style={{ width: `${(item.votes / maxVotes) * 100}%` }}
+              />
+              <div className="relative flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-300">
+                  {optionLabels[item.option] || `Option ${item.option}`}
+                </span>
+                <span className="text-sm font-semibold text-white tabular-nums">
+                  {item.votes}
+                </span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="py-4 text-center text-sm text-slate-600">Waiting for votes...</p>
+        )}
+      </div>
+
+      <div className="mt-5 flex justify-center">
         <button
           type="button"
           className={PRIMARY_BUTTON_CLASS}
@@ -91,35 +108,6 @@ export function StepManagePoll({
         >
           {busyAction === "finalize" ? "Submitting..." : "Finalize Poll"}
         </button>
-        {!ended && !finalized ? (
-          <span className="text-xs text-zinc-500">
-            Wait for the poll to end before finalizing.
-          </span>
-        ) : null}
-        {ended && !finalized ? (
-          <span className="text-xs text-amber-600">
-            If finalize fails, wait a moment. Starknet block timestamps may lag behind.
-          </span>
-        ) : null}
-      </div>
-
-      <div className="mt-5 space-y-3">
-        {hasPoll && tallies.length ? (
-          tallies.map((item) => (
-            <div
-              key={item.option}
-              className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3"
-            >
-              <span className="text-sm font-medium text-zinc-700">
-                Option {item.option}
-                {optionLabels[item.option] ? ` - ${optionLabels[item.option]}` : ""}
-              </span>
-              <span className="text-sm font-semibold text-zinc-900">{item.votes} vote(s)</span>
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-zinc-600">No tally data yet. Waiting for votes...</p>
-        )}
       </div>
     </div>
   );
