@@ -37,7 +37,7 @@ Edit `zk/.env` with your Starknet Sepolia wallet credentials:
 ```env
 ACCOUNT_ADDRESS=0x...
 PRIVATE_KEY=0x...
-RPC_URL=https://starknet-sepolia.public.blastapi.io/rpc/v0_7
+RPC_URL=https://starknet-sepolia-rpc.publicnode.com
 ```
 
 > **Note:** Deploying the Groth16 verifier (~2MB contract) requires a private RPC (e.g. Alchemy, Infura). Public RPCs may reject the large declare transaction.

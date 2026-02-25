@@ -1,0 +1,291 @@
+[
+  {
+    "type": "impl",
+    "name": "IVoterSetRegistryImpl",
+    "interface_name": "starkvote::voter_set_registry::IVoterSetRegistry"
+  },
+  {
+    "type": "struct",
+    "name": "core::array::Span::<core::starknet::contract_address::ContractAddress>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::starknet::contract_address::ContractAddress>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::integer::u256",
+    "members": [
+      {
+        "name": "low",
+        "type": "core::integer::u128"
+      },
+      {
+        "name": "high",
+        "type": "core::integer::u128"
+      }
+    ]
+  },
+  {
+    "type": "enum",
+    "name": "core::bool",
+    "variants": [
+      {
+        "name": "False",
+        "type": "()"
+      },
+      {
+        "name": "True",
+        "type": "()"
+      }
+    ]
+  },
+  {
+    "type": "interface",
+    "name": "starkvote::voter_set_registry::IVoterSetRegistry",
+    "items": [
+      {
+        "type": "function",
+        "name": "add_eligible_batch",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "addresses",
+            "type": "core::array::Span::<core::starknet::contract_address::ContractAddress>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "register_commitment",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "commitment",
+            "type": "core::integer::u256"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "freeze",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_leaf",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "index",
+            "type": "core::integer::u32"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u256"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_leaf_count",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u32"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "is_frozen",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_poll_admin",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "is_eligible",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "address",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "has_registered",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "address",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "constructor",
+    "name": "constructor",
+    "inputs": []
+  },
+  {
+    "type": "event",
+    "name": "starkvote::voter_set_registry::VoterSetRegistry::EligibleAdded",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "poll_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "address",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "starkvote::voter_set_registry::VoterSetRegistry::CommitmentRegistered",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "poll_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "index",
+        "type": "core::integer::u32",
+        "kind": "key"
+      },
+      {
+        "name": "registrant",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "commitment",
+        "type": "core::integer::u256",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "starkvote::voter_set_registry::VoterSetRegistry::Frozen",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "poll_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "leaf_count",
+        "type": "core::integer::u32",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "starkvote::voter_set_registry::VoterSetRegistry::Event",
+    "kind": "enum",
+    "variants": [
+      {
+        "name": "EligibleAdded",
+        "type": "starkvote::voter_set_registry::VoterSetRegistry::EligibleAdded",
+        "kind": "nested"
+      },
+      {
+        "name": "CommitmentRegistered",
+        "type": "starkvote::voter_set_registry::VoterSetRegistry::CommitmentRegistered",
+        "kind": "nested"
+      },
+      {
+        "name": "Frozen",
+        "type": "starkvote::voter_set_registry::VoterSetRegistry::Frozen",
+        "kind": "nested"
+      }
+    ]
+  }
+]

@@ -1,0 +1,407 @@
+[
+  {
+    "type": "impl",
+    "name": "IPollImpl",
+    "interface_name": "starkvote::poll::IPoll"
+  },
+  {
+    "type": "struct",
+    "name": "core::integer::u256",
+    "members": [
+      {
+        "name": "low",
+        "type": "core::integer::u128"
+      },
+      {
+        "name": "high",
+        "type": "core::integer::u128"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::byte_array::ByteArray",
+    "members": [
+      {
+        "name": "data",
+        "type": "core::array::Array::<core::bytes_31::bytes31>"
+      },
+      {
+        "name": "pending_word",
+        "type": "core::felt252"
+      },
+      {
+        "name": "pending_word_len",
+        "type": "core::internal::bounded_int::BoundedInt::<0, 30>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::array::Span::<core::byte_array::ByteArray>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::byte_array::ByteArray>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::array::Span::<core::felt252>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::felt252>"
+      }
+    ]
+  },
+  {
+    "type": "enum",
+    "name": "core::bool",
+    "variants": [
+      {
+        "name": "False",
+        "type": "()"
+      },
+      {
+        "name": "True",
+        "type": "()"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "starkvote::poll::PollData",
+    "members": [
+      {
+        "name": "exists",
+        "type": "core::bool"
+      },
+      {
+        "name": "options_count",
+        "type": "core::integer::u8"
+      },
+      {
+        "name": "start_time",
+        "type": "core::integer::u64"
+      },
+      {
+        "name": "end_time",
+        "type": "core::integer::u64"
+      },
+      {
+        "name": "snapshot_root",
+        "type": "core::integer::u256"
+      },
+      {
+        "name": "finalized",
+        "type": "core::bool"
+      },
+      {
+        "name": "winner_option",
+        "type": "core::integer::u8"
+      },
+      {
+        "name": "max_votes",
+        "type": "core::integer::u32"
+      }
+    ]
+  },
+  {
+    "type": "interface",
+    "name": "starkvote::poll::IPoll",
+    "items": [
+      {
+        "type": "function",
+        "name": "create_poll",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "options_count",
+            "type": "core::integer::u8"
+          },
+          {
+            "name": "start_time",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "end_time",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "merkle_root",
+            "type": "core::integer::u256"
+          },
+          {
+            "name": "option_labels",
+            "type": "core::array::Span::<core::byte_array::ByteArray>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "vote",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "option",
+            "type": "core::integer::u8"
+          },
+          {
+            "name": "full_proof_with_hints",
+            "type": "core::array::Span::<core::felt252>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_tally",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "option",
+            "type": "core::integer::u8"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u32"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "is_nullifier_used",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "nullifier_hash",
+            "type": "core::integer::u256"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_poll",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "starkvote::poll::PollData"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_option_label",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "option",
+            "type": "core::integer::u8"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::byte_array::ByteArray"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_option_labels",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::array::Array::<core::byte_array::ByteArray>"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "finalize",
+        "inputs": [
+          {
+            "name": "poll_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_registry",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_verifier",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "constructor",
+    "name": "constructor",
+    "inputs": [
+      {
+        "name": "registry",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "verifier",
+        "type": "core::starknet::contract_address::ContractAddress"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "starkvote::poll::Poll::PollCreated",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "poll_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "snapshot_root",
+        "type": "core::integer::u256",
+        "kind": "data"
+      },
+      {
+        "name": "start_time",
+        "type": "core::integer::u64",
+        "kind": "data"
+      },
+      {
+        "name": "end_time",
+        "type": "core::integer::u64",
+        "kind": "data"
+      },
+      {
+        "name": "options_count",
+        "type": "core::integer::u8",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "starkvote::poll::Poll::Voted",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "poll_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "nullifier_hash",
+        "type": "core::integer::u256",
+        "kind": "data"
+      },
+      {
+        "name": "option",
+        "type": "core::integer::u8",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "starkvote::poll::Poll::PollFinalized",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "poll_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "winner_option",
+        "type": "core::integer::u8",
+        "kind": "data"
+      },
+      {
+        "name": "max_votes",
+        "type": "core::integer::u32",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "starkvote::poll::Poll::Event",
+    "kind": "enum",
+    "variants": [
+      {
+        "name": "PollCreated",
+        "type": "starkvote::poll::Poll::PollCreated",
+        "kind": "nested"
+      },
+      {
+        "name": "Voted",
+        "type": "starkvote::poll::Poll::Voted",
+        "kind": "nested"
+      },
+      {
+        "name": "PollFinalized",
+        "type": "starkvote::poll::Poll::PollFinalized",
+        "kind": "nested"
+      }
+    ]
+  }
+]

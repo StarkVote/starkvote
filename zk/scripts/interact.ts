@@ -85,7 +85,7 @@ function buildAccount(provider: RpcProvider): Account {
 
 function buildProvider(): RpcProvider {
   return new RpcProvider({
-    nodeUrl: process.env.RPC_URL || "https://rpc.starknet-testnet.lava.build",
+    nodeUrl: process.env.RPC_URL || "https://starknet-sepolia-rpc.publicnode.com",
   });
 }
 

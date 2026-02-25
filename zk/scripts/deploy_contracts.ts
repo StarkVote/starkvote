@@ -82,7 +82,7 @@ async function main() {
 
   const deployerAddressEnv = process.env.ACCOUNT_ADDRESS;
   const privateKeyEnv = process.env.PRIVATE_KEY;
-  const rpcUrl = process.env.RPC_URL || "https://rpc.starknet-testnet.lava.build";
+  const rpcUrl = process.env.RPC_URL || "https://starknet-sepolia-rpc.publicnode.com";
   if (!deployerAddressEnv || !privateKeyEnv) {
     throw new Error("Missing ACCOUNT_ADDRESS or PRIVATE_KEY in zk/.env");
   }
