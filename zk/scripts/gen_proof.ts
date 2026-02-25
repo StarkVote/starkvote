@@ -16,6 +16,8 @@ import { packGroth16Proof } from "@semaphore-protocol/proof";
 import { keccak256, toBeHex, zeroPadValue } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
+// snarkjs has no official type declarations
+// @ts-ignore
 import { groth16 } from "snarkjs";
 import { fileURLToPath } from "url";
 

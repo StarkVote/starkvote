@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { Account, Contract, RpcProvider, Signer, json } from "starknet";
+import { Account, CallData, Contract, RpcProvider, Signer, json } from "starknet";
 import { config } from "dotenv";
 import { existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
@@ -145,19 +145,37 @@ async function createPoll(
   optionsCount: number,
   startTime: number,
   endTime: number,
-  root: string
+  root: string,
+  optionLabels: string[]
 ) {
+  if (optionLabels.length !== optionsCount) {
+    throw new Error(`Expected ${optionsCount} labels, got ${optionLabels.length}`);
+  }
   const provider = buildProvider();
   const account = buildAccount(provider);
-  const poll = new Contract(
-    {
-      abi: loadAbi("starkvote_Poll.contract_class.json"),
-      address: getAddress("poll_address", "POLL_ADDRESS"),
-      providerOrAccount: account,
-    }
-  );
+  const pollAbi = loadAbi("starkvote_Poll.contract_class.json");
+  const pollAddress = getAddress("poll_address", "POLL_ADDRESS");
 
-  const tx = await poll.create_poll(pollId, optionsCount, startTime, endTime, toU256(root));
+  // starknet.js v9 validate() has a bug with Span<ByteArray>: it routes each
+  // element through validateStruct (expecting an object) instead of the
+  // CairoByteArray path (expecting a string). compile() handles strings
+  // correctly, so we bypass the high-level Contract call and go via
+  // account.execute() with pre-compiled calldata.
+  const cd = new CallData(pollAbi);
+  const compiled = cd.compile("create_poll", [
+    pollId,
+    optionsCount,
+    startTime,
+    endTime,
+    toU256(root),
+    optionLabels,   // plain strings — compile() encodes ByteArray correctly
+  ]);
+
+  const tx = await account.execute({
+    contractAddress: pollAddress,
+    entrypoint: "create_poll",
+    calldata: compiled,
+  });
   await provider.waitForTransaction(tx.transaction_hash);
   console.log(`Poll created: ${tx.transaction_hash}`);
 }
@@ -207,6 +225,34 @@ async function finalize(pollId: number) {
   console.log(`Poll finalized: ${tx.transaction_hash}`);
 }
 
+async function getOptionLabel(pollId: number, option: number) {
+  const provider = buildProvider();
+  const poll = new Contract(
+    {
+      abi: loadAbi("starkvote_Poll.contract_class.json"),
+      address: getAddress("poll_address", "POLL_ADDRESS"),
+      providerOrAccount: provider,
+    }
+  );
+  const label = await poll.get_option_label(pollId, option);
+  console.log(`Poll ${pollId}, option ${option}: "${label}"`);
+}
+
+async function getOptionLabels(pollId: number): Promise<Map<number, string>> {
+  const provider = buildProvider();
+  const poll = new Contract(
+    {
+      abi: loadAbi("starkvote_Poll.contract_class.json"),
+      address: getAddress("poll_address", "POLL_ADDRESS"),
+      providerOrAccount: provider,
+    }
+  );
+  const labels: string[] = await poll.get_option_labels(pollId);
+  const mapping = new Map<number, string>(labels.map((label, idx) => [idx, label]));
+  console.log(JSON.stringify(Object.fromEntries(mapping), null, 2));
+  return mapping;
+}
+
 async function getPoll(pollId: number) {
   const provider = buildProvider();
   const poll = new Contract(
@@ -233,15 +279,20 @@ async function main() {
     case "freeze-registry":
       await freezeRegistry(Number(process.argv[3]));
       return;
-    case "create-poll":
+    case "create-poll": {
+      const optionsCount = Number(process.argv[4]);
+      // Labels follow the root argument: create-poll <id> <count> <start> <end> <root> <label0> ...
+      const labels = process.argv.slice(8, 8 + optionsCount);
       await createPoll(
         Number(process.argv[3]),
-        Number(process.argv[4]),
+        optionsCount,
         Number(process.argv[5]),
         Number(process.argv[6]),
-        process.argv[7]
+        process.argv[7],
+        labels
       );
       return;
+    }
     case "submit-vote":
       await submitVote(process.argv[3]);
       return;
@@ -250,6 +301,12 @@ async function main() {
       return;
     case "finalize":
       await finalize(Number(process.argv[3]));
+      return;
+    case "get-option-label":
+      await getOptionLabel(Number(process.argv[3]), Number(process.argv[4]));
+      return;
+    case "get-option-labels":
+      await getOptionLabels(Number(process.argv[3]));
       return;
     case "get-poll":
       await getPoll(Number(process.argv[3]));
@@ -261,9 +318,11 @@ async function main() {
           "  npm run interact -- add-eligible <pollId> <address1> <address2> ...",
           "  npm run interact -- register-commitment <pollId> <commitment>",
           "  npm run interact -- freeze-registry <pollId>",
-          "  npm run interact -- create-poll <pollId> <optionsCount> <startTime> <endTime> <root>",
+          "  npm run interact -- create-poll <pollId> <optionsCount> <startTime> <endTime> <root> <label0> <label1> ...",
           "  npm run interact -- submit-vote <samples/worldcoin_calldata.json>",
           "  npm run interact -- get-tally <pollId> <option>",
+          "  npm run interact -- get-option-label <pollId> <option>",
+          "  npm run interact -- get-option-labels <pollId>",
           "  npm run interact -- finalize <pollId>",
           "  npm run interact -- get-poll <pollId>",
         ].join("\n")

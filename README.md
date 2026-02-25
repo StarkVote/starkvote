@@ -17,10 +17,10 @@ Making this work fully on-chain in Cairo required integrating [Garaga](https://g
 
 | Contract | Address |
 |---|---|
-| Groth16VerifierBN254 | `0x7b36d8d96916d4353b70982e6781c5f1373487bafc0afa60f433f1545346a68` |
-| Semaphore30Verifier | `0x549185d992ed265a0fb3fb17eea5e7ee753ea02c8d6b4608f6c83ae895d4dd5` |
-| VoterSetRegistry | `0x524442ab0c7bae6a9a0ce2b00ac6d621b9502c454ffdc204c9b48a2c37a68c` |
-| Poll | `0x5789a8b8844df95cd10689b3d5f2273ab4e769a4e5c1c6f062749e0d47aab73` |
+| Groth16VerifierBN254 | `0x1e887ebf03a47de3e22cae4892c13da338e9d4a860b994abbafacdc77874951` |
+| Semaphore30Verifier | `0x54df8c3ccfa7f2383c37765c0ac2b76f5b039066eff832dd934945415e687ff` |
+| VoterSetRegistry | `0x45a71bd1975fabda91c6b74850472b4cf5f7e9fd163603f1e6602500fb42411` |
+| Poll | `0x380953626f285190c62dadb3f26886e70b5ba82f4ccc815718534912cdb1efc` |
 
 
 ## How it works

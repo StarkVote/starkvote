@@ -46,7 +46,7 @@ There is no global admin. Anyone can create a voter set for a new `poll_id` — 
 
 Manages polls, verifies proofs, and tallies votes.
 
-- **`create_poll(poll_id, options_count, start_time, end_time, merkle_root)`** — Anyone can create a poll with a Merkle root. The voter set for that `poll_id` must be frozen in the registry.
+- **`create_poll(poll_id, options_count, start_time, end_time, merkle_root, option_labels)`** — Anyone can create a poll with a Merkle root and a list of candidate name strings (one per option). The voter set for that `poll_id` must be frozen in the registry. Labels are stored on-chain for UI use only — they are not part of the ZK proof.
 - **`vote(poll_id, option, full_proof_with_hints)`** — Voter submits a Groth16 proof. The contract:
   1. Verifies the proof via Semaphore30Verifier
   2. Extracts public inputs: `[root, nullifier_hash, signal_hash, scope_hash]`
@@ -57,6 +57,8 @@ Manages polls, verifies proofs, and tallies votes.
   7. Increments `tally[(poll_id, option)]`
 - **`finalize(poll_id)`** — Anyone can call after `end_time` to compute and store the winner.
 - **`get_tally(poll_id, option)`** — Read vote count for any option.
+- **`get_option_label(poll_id, option)`** — Read the candidate name string for a single option.
+- **`get_option_labels(poll_id)`** — Read all candidate name strings for a poll as an ordered array (index = option number).
 
 ### Semaphore30Verifier (`contracts/src/verifier.cairo`)
 
@@ -141,7 +143,7 @@ Each proof produces a deterministic `nullifier_hash = f(identity_secret, scope)`
 
 | Contract | Address |
 |----------|---------|
-| Groth16VerifierBN254 | `0x7b36d8d96916d4353b70982e6781c5f1373487bafc0afa60f433f1545346a68` |
-| Semaphore30Verifier | `0x549185d992ed265a0fb3fb17eea5e7ee753ea02c8d6b4608f6c83ae895d4dd5` |
-| VoterSetRegistry | `0x524442ab0c7bae6a9a0ce2b00ac6d621b9502c454ffdc204c9b48a2c37a68c` |
-| Poll | `0x5789a8b8844df95cd10689b3d5f2273ab4e769a4e5c1c6f062749e0d47aab73` |
+| Groth16VerifierBN254 | `0x1e887ebf03a47de3e22cae4892c13da338e9d4a860b994abbafacdc77874951` |
+| Semaphore30Verifier | `0x54df8c3ccfa7f2383c37765c0ac2b76f5b039066eff832dd934945415e687ff` |
+| VoterSetRegistry | `0x45a71bd1975fabda91c6b74850472b4cf5f7e9fd163603f1e6602500fb42411` |
+| Poll | `0x380953626f285190c62dadb3f26886e70b5ba82f4ccc815718534912cdb1efc` |

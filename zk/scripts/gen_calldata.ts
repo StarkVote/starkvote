@@ -14,7 +14,24 @@
  *   - zk/samples/worldcoin_calldata.json
  */
 import { init, getGroth16CallData, CurveId } from "garaga";
-import type { Groth16Proof, Groth16VerifyingKey } from "garaga";
+
+type G1 = { x: bigint; y: bigint; curveId: CurveId };
+type G2 = { x: [bigint, bigint]; y: [bigint, bigint]; curveId: CurveId };
+
+interface Groth16Proof {
+  a: G1;
+  b: G2;
+  c: G1;
+  publicInputs: bigint[];
+}
+
+interface Groth16VerifyingKey {
+  alpha: G1;
+  beta: G2;
+  gamma: G2;
+  delta: G2;
+  ic: G1[];
+}
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";

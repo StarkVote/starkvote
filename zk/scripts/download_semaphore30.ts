@@ -7,7 +7,7 @@
  *
  * Then extracts verification_key30.json from the zkey file.
  */
-import { maybeGetSnarkArtifacts } from '@zk-kit/artifacts';
+import { maybeGetSnarkArtifacts, Project } from '@zk-kit/artifacts';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
@@ -22,7 +22,7 @@ async function main() {
 
   try {
     // Download artifacts using @zk-kit/artifacts
-    const artifacts = await maybeGetSnarkArtifacts('semaphore', { treeDepth: 30 });
+    const artifacts = await maybeGetSnarkArtifacts(Project.SEMAPHORE, { parameters: [30] });
 
     console.log('✅ Download complete!');
     console.log(`   WASM: ${artifacts.wasm}`);

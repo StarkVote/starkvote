@@ -20,7 +20,8 @@ pub trait IPoll<TContractState> {
         options_count: u8,
         start_time: u64,
         end_time: u64,
-        merkle_root: u256
+        merkle_root: u256,
+        option_labels: Span<ByteArray>
     );
     fn vote(
         ref self: TContractState,
@@ -31,6 +32,8 @@ pub trait IPoll<TContractState> {
     fn get_tally(self: @TContractState, poll_id: u64, option: u8) -> u32;
     fn is_nullifier_used(self: @TContractState, poll_id: u64, nullifier_hash: u256) -> bool;
     fn get_poll(self: @TContractState, poll_id: u64) -> PollData;
+    fn get_option_label(self: @TContractState, poll_id: u64, option: u8) -> ByteArray;
+    fn get_option_labels(self: @TContractState, poll_id: u64) -> Array<ByteArray>;
     fn finalize(ref self: TContractState, poll_id: u64);
     fn get_registry(self: @TContractState) -> ContractAddress;
     fn get_verifier(self: @TContractState) -> ContractAddress;
@@ -56,6 +59,7 @@ mod Poll {
         polls: Map<u64, PollData>,
         used_nullifiers: Map<(u64, u256), bool>,
         tally: Map<(u64, u8), u32>,
+        option_labels: Map<(u64, u8), ByteArray>,
     }
 
     #[event]
@@ -124,7 +128,8 @@ mod Poll {
             options_count: u8,
             start_time: u64,
             end_time: u64,
-            merkle_root: u256
+            merkle_root: u256,
+            option_labels: Span<ByteArray>
         ) {
             let existing_poll = self.polls.read(poll_id);
             assert(!existing_poll.exists, 'Poll already exists');
@@ -135,6 +140,7 @@ mod Poll {
 
             assert(options_count > 0, 'Must have at least 1 option');
             assert(start_time < end_time, 'Invalid time bounds');
+            assert(option_labels.len() == options_count.into(), 'Labels count mismatch');
 
             let poll_data = PollData {
                 exists: true,
@@ -147,6 +153,15 @@ mod Poll {
                 max_votes: 0,
             };
             self.polls.write(poll_id, poll_data);
+
+            let mut i: u8 = 0;
+            loop {
+                if i >= options_count {
+                    break;
+                }
+                self.option_labels.write((poll_id, i), option_labels[i.into()].clone());
+                i += 1;
+            };
 
             self.emit(
                 PollCreated {
@@ -219,6 +234,24 @@ mod Poll {
 
         fn get_poll(self: @ContractState, poll_id: u64) -> PollData {
             self.polls.read(poll_id)
+        }
+
+        fn get_option_label(self: @ContractState, poll_id: u64, option: u8) -> ByteArray {
+            self.option_labels.read((poll_id, option))
+        }
+
+        fn get_option_labels(self: @ContractState, poll_id: u64) -> Array<ByteArray> {
+            let poll = self.polls.read(poll_id);
+            let mut labels: Array<ByteArray> = ArrayTrait::new();
+            let mut i: u8 = 0;
+            loop {
+                if i >= poll.options_count {
+                    break;
+                }
+                labels.append(self.option_labels.read((poll_id, i)));
+                i += 1;
+            };
+            labels
         }
 
         fn finalize(ref self: ContractState, poll_id: u64) {
