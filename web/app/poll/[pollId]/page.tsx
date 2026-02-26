@@ -1,7 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { byteArray, type AccountInterface, type ByteArray } from "starknet";
 import { connect, disconnect } from "starknetkit";
 
@@ -19,25 +26,31 @@ import {
   toU256,
 } from "@/lib/starkvote";
 
-import { EligibilityCard } from "./_components/EligibilityCard";
-import { ErrorAlert } from "./_components/ErrorAlert";
-import { PageHeader } from "./_components/PageHeader";
-import { PollDetailsCard } from "./_components/PollDetailsCard";
-import { PollStatusCard } from "./_components/PollStatusCard";
-import { RegisterCommitmentCard } from "./_components/RegisterCommitmentCard";
-import { VoteCard } from "./_components/VoteCard";
-import { WalletCard } from "./_components/WalletCard";
+import { CARD_CLASS } from "@/features/poll-admin/constants";
+import { NoticeToast } from "@/features/poll-admin/components/notice-banner";
+import type { Notice } from "@/features/poll-admin/types";
 import { generateProofClientSide } from "@/lib/client/proof-generation";
 
 import { generateIdentityData, toIdentityJson } from "./_lib/identity";
 import { resolveIdentitySerialized } from "./_lib/proof";
-import type { GeneratedIdentity, PollDetails } from "./_lib/types";
+import { usePollVoterData, usePollVoterActions } from "./_lib/store";
+import type { PollDetails } from "./_lib/types";
 import {
   errorMessage,
+  formatShortHash,
   getTxHash,
   parsePollDetails,
   parseU64,
 } from "./_lib/utils";
+
+import { StepConnect } from "./_components/step-connect";
+import { StepRegister } from "./_components/step-register";
+import { StepVote } from "./_components/step-vote";
+import { StepResults } from "./_components/step-results";
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
 
 function decodeByteArrayValue(value: unknown): string {
   if (typeof value === "string") return value;
@@ -51,47 +64,70 @@ function decodeByteArrayValue(value: unknown): string {
   return String(value ?? "");
 }
 
+const VOTER_STEPS = [
+  { id: 1, label: "Connect Wallet" },
+  { id: 2, label: "Register" },
+  { id: 3, label: "Vote" },
+  { id: 4, label: "Results" },
+] as const;
+
+function StepDots({
+  current,
+  total,
+  maxUnlocked,
+  onNavigate,
+}: {
+  current: number;
+  total: number;
+  maxUnlocked: number;
+  onNavigate: (step: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-center gap-2 pt-6">
+      {Array.from({ length: total }, (_, i) => {
+        const step = i + 1;
+        const unlocked = step <= maxUnlocked;
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => unlocked && onNavigate(step)}
+            className={`h-1.5 rounded-full transition-all duration-300 ${
+              step === current
+                ? "w-6 bg-violet-500"
+                : step < current
+                  ? "w-1.5 bg-violet-500/40"
+                  : "w-1.5 bg-white/[0.1]"
+            } ${unlocked ? "cursor-pointer" : "cursor-default"}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function getMaxVoterStep(
+  isConnected: boolean,
+  alreadyRegistered: boolean | null,
+  pollExists: boolean,
+): number {
+  if (!isConnected) return 1;
+  if (alreadyRegistered !== true) return 2;
+  return pollExists ? 4 : 3;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
+
 export default function PollPage() {
   const params = useParams<{ pollId: string | string[] }>();
 
-  const [commitmentInput, setCommitmentInput] = useState("");
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [optionLabels, setOptionLabels] = useState<string[]>([]);
-  const [identityInput, setIdentityInput] = useState("");
-  const [voteProgress, setVoteProgress] = useState<string | null>(null);
-  const [generatedProofDisplay, setGeneratedProofDisplay] = useState<string | null>(
-    null,
-  );
-
-  const [walletAccount, setWalletAccount] = useState<AccountInterface | null>(null);
-  const [walletName, setWalletName] = useState("-");
-
-  const [pollData, setPollData] = useState<PollDetails | null>(null);
-  const [tallies, setTallies] = useState<number[]>([]);
-  const [resolvedRegistryAddress, setResolvedRegistryAddress] =
-    useState(DEFAULT_REGISTRY_ADDRESS);
-
-  const [registryFrozen, setRegistryFrozen] = useState<boolean | null>(null);
-  const [eligibleForPoll, setEligibleForPoll] = useState<boolean | null>(null);
-  const [alreadyRegistered, setAlreadyRegistered] = useState<boolean | null>(null);
-
-  const [loadingState, setLoadingState] = useState(false);
-  const [connectingWallet, setConnectingWallet] = useState(false);
-  const [registering, setRegistering] = useState(false);
-  const [voting, setVoting] = useState(false);
-
-  const [registerTx, setRegisterTx] = useState<string | null>(null);
-  const [voteTx, setVoteTx] = useState<string | null>(null);
-  const [lastError, setLastError] = useState<string | null>(null);
-  const [generatedIdentity, setGeneratedIdentity] =
-    useState<GeneratedIdentity | null>(null);
+  /* ---- Derived poll ID ---- */
 
   const pollIdParam = useMemo(() => {
     const value = params.pollId;
-    if (Array.isArray(value)) {
-      return value[0] ?? "";
-    }
-    return value ?? "";
+    return (Array.isArray(value) ? value[0] : value) ?? "";
   }, [params.pollId]);
 
   const pollIdValidation = useMemo(() => {
@@ -108,16 +144,99 @@ export default function PollPage() {
     [pollIdValidation.value],
   );
 
+  /* ---- Persisted voter state (Zustand + localStorage) ---- */
+
+  const {
+    currentStep,
+    selectedOption,
+    identityInput,
+    generatedIdentity,
+    registerTx,
+    voteTx,
+  } = usePollVoterData(pollIdParam);
+
+  const actions = usePollVoterActions(pollIdParam);
+
+  /* ---- Transient local state ---- */
+
+  const [optionLabels, setOptionLabels] = useState<string[]>([]);
+  const [voteProgress, setVoteProgress] = useState<string | null>(null);
+  const [generatedProofDisplay, setGeneratedProofDisplay] = useState<
+    string | null
+  >(null);
+
+  /* Wallet */
+  const [walletAccount, setWalletAccount] =
+    useState<AccountInterface | null>(null);
+  const [walletName, setWalletName] = useState("-");
+
+  /* On-chain */
+  const [pollData, setPollData] = useState<PollDetails | null>(null);
+  const [tallies, setTallies] = useState<number[]>([]);
+  const [resolvedRegistryAddress, setResolvedRegistryAddress] = useState(
+    DEFAULT_REGISTRY_ADDRESS,
+  );
+  const [eligibleForPoll, setEligibleForPoll] = useState<boolean | null>(null);
+  const [alreadyRegistered, setAlreadyRegistered] = useState<boolean | null>(
+    null,
+  );
+
+  /* Loading / busy */
+  const [loadingState, setLoadingState] = useState(false);
+  const [connectingWallet, setConnectingWallet] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [voting, setVoting] = useState(false);
+
+  /* Notice */
+  const [notice, setNotice] = useState<Notice | null>(null);
+
+  /* ---- Derived ---- */
+
   const provider = useMemo(() => createProvider(DEFAULT_RPC_URL), []);
-  const accountAddress = walletAccount ? normalizeHex(walletAccount.address) : null;
+  const accountAddress = walletAccount
+    ? normalizeHex(walletAccount.address)
+    : null;
+  const isConnected = Boolean(walletAccount);
+
+  /* ---- Wizard navigation ---- */
+
+  const maxStep = getMaxVoterStep(
+    isConnected,
+    alreadyRegistered,
+    pollData?.exists ?? false,
+  );
+
+  // Auto-advance: when maxStep increases (e.g. wallet connects, user
+  // registers), advance to the next logical step — but never go *below* the
+  // persisted currentStep so returning visitors stay where they left off.
+  const currentStepRef = useRef(currentStep);
+  currentStepRef.current = currentStep;
+
+  const prevMaxRef = useRef(1);
+  useEffect(() => {
+    if (maxStep > prevMaxRef.current) {
+      const nextStep = prevMaxRef.current + 1;
+      if (nextStep > currentStepRef.current) {
+        actions.setCurrentStep(nextStep);
+      }
+    }
+    prevMaxRef.current = maxStep;
+  }, [maxStep, actions]);
+
+  const goToStep = useCallback(
+    (step: number) =>
+      actions.setCurrentStep(Math.max(1, Math.min(step, maxStep))),
+    [maxStep, actions],
+  );
+
+  const stepLabel = VOTER_STEPS[currentStep - 1]?.label ?? "";
+
+  /* ---- On-chain data loading ---- */
 
   const loadOnChainState = useCallback(async () => {
-    if (!pollIdForCall) {
-      return;
-    }
+    if (!pollIdForCall) return;
 
     setLoadingState(true);
-    setLastError(null);
 
     try {
       const pollRead = createPollContract(DEFAULT_POLL_ADDRESS, provider);
@@ -136,7 +255,7 @@ export default function PollPage() {
 
       const registryRead = createRegistryContract(registryAddress, provider);
       const frozen = await registryRead.is_frozen(pollIdForCall);
-      setRegistryFrozen(toBoolean(frozen));
+      void frozen; // consumed indirectly via eligibility
 
       if (accountAddress) {
         const [eligible, registered] = await Promise.all([
@@ -172,15 +291,17 @@ export default function PollPage() {
         setTallies([]);
       }
     } catch (error) {
-      setLastError(errorMessage(error));
+      setNotice({ type: "error", message: errorMessage(error) });
     } finally {
       setLoadingState(false);
     }
   }, [accountAddress, pollIdForCall, provider]);
 
+  /* ---- Wallet ---- */
+
   const connectWallet = useCallback(async () => {
     setConnectingWallet(true);
-    setLastError(null);
+    setNotice(null);
 
     try {
       const result = await connect({
@@ -195,7 +316,7 @@ export default function PollPage() {
       setWalletAccount(nextAccount);
       setWalletName(result.connector.name || "Wallet");
     } catch (error) {
-      setLastError(errorMessage(error));
+      setNotice({ type: "error", message: errorMessage(error) });
     } finally {
       setConnectingWallet(false);
     }
@@ -209,11 +330,11 @@ export default function PollPage() {
     }
     setWalletAccount(null);
     setWalletName("-");
-  }, []);
+    actions.setCurrentStep(1);
+  }, [actions]);
 
   useEffect(() => {
     let ignore = false;
-
     const reconnectSilently = async () => {
       try {
         const result = await connect({
@@ -221,93 +342,83 @@ export default function PollPage() {
           modalTheme: "dark",
           dappName: "StarkVote",
         });
-        if (!result.connector || ignore) {
-          return;
-        }
+        if (!result.connector || ignore) return;
         const nextAccount = await result.connector.account(provider);
-        if (ignore) {
-          return;
-        }
+        if (ignore) return;
         setWalletAccount(nextAccount);
         setWalletName(result.connector.name || "Wallet");
       } catch {
         // No prior session is expected for first-time users.
       }
     };
-
     void reconnectSilently();
     return () => {
       ignore = true;
     };
   }, [provider]);
 
-  const handleRegister = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
+  /* ---- Register ---- */
 
-      if (!walletAccount) {
-        setLastError("Connect your wallet before registering.");
-        return;
-      }
-      if (!pollIdForCall) {
-        setLastError("Invalid poll ID.");
-        return;
-      }
-
-      setRegistering(true);
-      setLastError(null);
-      setRegisterTx(null);
-
-      try {
-        const commitment = toBigIntValue(commitmentInput.trim());
-        if (commitment < 0n) {
-          throw new Error("Commitment must be an unsigned u256.");
-        }
-
-        const registryWrite = createRegistryContract(
-          resolvedRegistryAddress,
-          walletAccount,
-        );
-        const tx = await registryWrite.register_commitment(
-          pollIdForCall,
-          toU256(commitment),
-        );
-        const txHash = getTxHash(tx);
-        setRegisterTx(txHash);
-        await provider.waitForTransaction(txHash);
-        await loadOnChainState();
-      } catch (error) {
-        setLastError(errorMessage(error));
-      } finally {
-        setRegistering(false);
-      }
-    },
-    [
-      commitmentInput,
-      loadOnChainState,
-      pollIdForCall,
-      provider,
-      resolvedRegistryAddress,
-      walletAccount,
-    ],
-  );
-
-  const handleGenerateIdentity = useCallback(() => {
-    try {
-      const identity = generateIdentityData();
-      setGeneratedIdentity(identity);
-      setCommitmentInput(identity.commitment);
-      setIdentityInput(identity.serialized);
-      setLastError(null);
-    } catch (error) {
-      setLastError(errorMessage(error));
-    }
-  }, []);
-
-  const handleDownloadIdentity = useCallback(() => {
-    if (!generatedIdentity) {
+  const handleRegister = useCallback(async () => {
+    if (!walletAccount) {
+      setNotice({
+        type: "error",
+        message: "Connect your wallet before registering.",
+      });
       return;
     }
+    if (!pollIdForCall) {
+      setNotice({ type: "error", message: "Invalid poll ID." });
+      return;
+    }
+
+    setRegistering(true);
+    setNotice(null);
+    actions.setRegisterTx(null);
+
+    try {
+      // Silently generate identity if not already generated
+      let identity = generatedIdentity;
+      if (!identity) {
+        identity = generateIdentityData();
+        actions.setGeneratedIdentity(identity);
+        actions.setIdentityInput(identity.serialized);
+      }
+
+      const commitment = toBigIntValue(identity.commitment);
+      const registryWrite = createRegistryContract(
+        resolvedRegistryAddress,
+        walletAccount,
+      );
+      const tx = await registryWrite.register_commitment(
+        pollIdForCall,
+        toU256(commitment),
+      );
+      const txHash = getTxHash(tx);
+      actions.setRegisterTx(txHash);
+      await provider.waitForTransaction(txHash);
+      await loadOnChainState();
+      setNotice({
+        type: "success",
+        message: "Commitment registered successfully.",
+      });
+    } catch (error) {
+      setNotice({ type: "error", message: errorMessage(error) });
+    } finally {
+      setRegistering(false);
+    }
+  }, [
+    actions,
+    generatedIdentity,
+    loadOnChainState,
+    pollIdForCall,
+    provider,
+    resolvedRegistryAddress,
+    walletAccount,
+  ]);
+
+  const handleDownloadIdentity = useCallback(() => {
+    if (!generatedIdentity) return;
 
     const filenamePoll = pollIdParam.trim() || "poll";
     const payload = toIdentityJson(generatedIdentity);
@@ -321,32 +432,38 @@ export default function PollPage() {
     URL.revokeObjectURL(url);
   }, [generatedIdentity, pollIdParam]);
 
+  /* ---- Vote ---- */
+
   const handleVote = useCallback(async () => {
     if (!walletAccount) {
-      setLastError("Connect your wallet before voting.");
+      setNotice({
+        type: "error",
+        message: "Connect your wallet before voting.",
+      });
       return;
     }
     if (!pollIdForCall || !pollIdValidation.value) {
-      setLastError("Invalid poll ID.");
+      setNotice({ type: "error", message: "Invalid poll ID." });
       return;
     }
     if (selectedOption === null) {
-      setLastError("Select an option to vote for.");
+      setNotice({ type: "error", message: "Select an option to vote for." });
       return;
     }
     if (pollData?.exists && selectedOption >= pollData.optionsCount) {
-      setLastError(
-        `Option out of range. Poll supports options 0\u2013${Math.max(
+      setNotice({
+        type: "error",
+        message: `Option out of range. Poll supports options 0\u2013${Math.max(
           pollData.optionsCount - 1,
           0,
         )}.`,
-      );
+      });
       return;
     }
 
     setVoting(true);
-    setLastError(null);
-    setVoteTx(null);
+    setNotice(null);
+    actions.setVoteTx(null);
     setGeneratedProofDisplay(null);
 
     try {
@@ -393,18 +510,21 @@ export default function PollPage() {
         proofPayload.full_proof_with_hints,
       );
       const txHash = getTxHash(tx);
-      setVoteTx(txHash);
+      actions.setVoteTx(txHash);
 
       setVoteProgress("Waiting for confirmation\u2026");
       await provider.waitForTransaction(txHash);
       await loadOnChainState();
+      actions.setCurrentStep(4);
+      setNotice({ type: "success", message: "Vote submitted successfully." });
     } catch (error) {
-      setLastError(errorMessage(error));
+      setNotice({ type: "error", message: errorMessage(error) });
     } finally {
       setVoting(false);
       setVoteProgress(null);
     }
   }, [
+    actions,
     walletAccount,
     pollIdForCall,
     pollIdValidation.value,
@@ -416,10 +536,10 @@ export default function PollPage() {
     loadOnChainState,
   ]);
 
+  /* ---- Effects ---- */
+
   useEffect(() => {
-    if (!pollIdForCall) {
-      return;
-    }
+    if (!pollIdForCall) return;
     void loadOnChainState();
     const interval = setInterval(() => {
       void loadOnChainState();
@@ -427,71 +547,123 @@ export default function PollPage() {
     return () => clearInterval(interval);
   }, [loadOnChainState, pollIdForCall]);
 
+  useEffect(() => {
+    if (pollIdValidation.error) {
+      setNotice({ type: "error", message: pollIdValidation.error });
+    }
+  }, [pollIdValidation.error]);
+
+  const dismissNotice = useCallback(() => setNotice(null), []);
+
+  /* ---- Render ---- */
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.22),transparent_40%),linear-gradient(180deg,#0f172a_0%,#020617_100%)] px-4 py-8 text-slate-100 sm:px-8">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <PageHeader
-          pollIdParam={pollIdParam}
-          pollAddress={DEFAULT_POLL_ADDRESS}
-          registryAddress={resolvedRegistryAddress}
-        />
+    <div className="min-h-screen bg-[#0a0a0f] bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,80,200,0.15),transparent)]">
+      <main className="mx-auto flex min-h-screen max-w-lg flex-col px-6 py-12">
+        {/* Header */}
+        <header className="flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-violet-400/70">
+              StarkVote
+            </p>
+            <h1 className="text-lg font-semibold text-white">
+              Poll {pollIdParam}
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            {isConnected ? (
+              <button
+                type="button"
+                onClick={() => void disconnectWallet()}
+                className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-slate-400 transition hover:text-white"
+              >
+                {formatShortHash(accountAddress)} &times;
+              </button>
+            ) : null}
+            <Link
+              href="/"
+              className="text-xs text-slate-500 transition hover:text-white"
+            >
+              &larr; Back
+            </Link>
+          </div>
+        </header>
 
-        {pollIdValidation.error ? <ErrorAlert message={pollIdValidation.error} /> : null}
-        {lastError ? <ErrorAlert message={lastError} /> : null}
+        <NoticeToast notice={notice} onDismiss={dismissNotice} />
 
-        <section className="grid gap-4 lg:grid-cols-3">
-          <WalletCard
-            connected={Boolean(walletAccount)}
-            walletName={walletName}
-            accountAddress={accountAddress}
-            connectingWallet={connectingWallet}
-            onConnect={() => void connectWallet()}
-            onDisconnect={() => void disconnectWallet()}
-          />
-          <PollStatusCard
-            pollData={pollData}
-            registryFrozen={registryFrozen}
-            loadingState={loadingState}
-            canRefresh={Boolean(pollIdForCall)}
-            onRefresh={() => void loadOnChainState()}
-          />
-          <EligibilityCard
-            eligibleForPoll={eligibleForPoll}
-            alreadyRegistered={alreadyRegistered}
-          />
-        </section>
+        {/* Wizard card */}
+        <div className="flex flex-1 flex-col justify-center">
+          <section className={CARD_CLASS}>
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
+                {stepLabel}
+              </p>
+              <p className="text-xs tabular-nums text-slate-600">
+                #{pollIdParam}
+              </p>
+            </div>
 
-        <section className="grid gap-4 lg:grid-cols-2">
-          <RegisterCommitmentCard
-            commitmentInput={commitmentInput}
-            onCommitmentChange={setCommitmentInput}
-            onSubmit={handleRegister}
-            onGenerateIdentity={handleGenerateIdentity}
-            onDownloadIdentity={handleDownloadIdentity}
-            registering={registering}
-            disabled={!walletAccount || !pollIdForCall}
-            registerTx={registerTx}
-            generatedIdentity={generatedIdentity}
-          />
-          <VoteCard
-            pollData={pollData}
-            optionLabels={optionLabels}
-            selectedOption={selectedOption}
-            onOptionSelect={setSelectedOption}
-            identityInput={identityInput}
-            onIdentityInputChange={setIdentityInput}
-            hasSessionIdentity={Boolean(generatedIdentity)}
-            onVote={() => void handleVote()}
-            voting={voting}
-            voteProgress={voteProgress}
-            disabled={!walletAccount || !pollIdForCall}
-            voteTx={voteTx}
-            generatedProofDisplay={generatedProofDisplay}
-          />
-        </section>
+            {currentStep === 1 ? (
+              <StepConnect
+                isConnected={isConnected}
+                walletName={walletName}
+                accountAddress={accountAddress}
+                connecting={connectingWallet}
+                onConnect={() => void connectWallet()}
+                onContinue={() => goToStep(2)}
+              />
+            ) : null}
 
-        <PollDetailsCard pollData={pollData} tallies={tallies} />
-      </div>
-    </main>
+            {currentStep === 2 ? (
+              <StepRegister
+                eligibleForPoll={eligibleForPoll}
+                alreadyRegistered={alreadyRegistered}
+                onRegister={() => void handleRegister()}
+                onDownloadIdentity={handleDownloadIdentity}
+                registering={registering}
+                registerTx={registerTx}
+                generatedIdentity={generatedIdentity}
+              />
+            ) : null}
+
+            {currentStep === 3 ? (
+              <StepVote
+                pollData={pollData}
+                optionLabels={optionLabels}
+                selectedOption={selectedOption}
+                onOptionSelect={actions.setSelectedOption}
+                identityInput={identityInput}
+                onIdentityInputChange={actions.setIdentityInput}
+                hasSessionIdentity={Boolean(generatedIdentity)}
+                onVote={() => void handleVote()}
+                voting={voting}
+                voteProgress={voteProgress}
+                voteTx={voteTx}
+                generatedProofDisplay={generatedProofDisplay}
+              />
+            ) : null}
+
+            {currentStep === 4 ? (
+              <StepResults
+                pollData={pollData}
+                tallies={tallies}
+                optionLabels={optionLabels}
+                pollAddress={DEFAULT_POLL_ADDRESS}
+                registryAddress={resolvedRegistryAddress}
+                loading={loadingState}
+                onRefresh={() => void loadOnChainState()}
+              />
+            ) : null}
+
+            <StepDots
+              current={currentStep}
+              total={4}
+              maxUnlocked={maxStep}
+              onNavigate={goToStep}
+            />
+          </section>
+        </div>
+      </main>
+    </div>
   );
 }

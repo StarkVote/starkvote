@@ -1,9 +1,6 @@
 import { useState } from "react";
 
-import type { LifecycleBadge } from "../types";
-
 type WizardHeaderProps = {
-  lifecycle: LifecycleBadge;
   isWalletConnected: boolean;
   walletAddress: string;
   isBusy: boolean;
@@ -16,7 +13,6 @@ function truncateAddress(address: string): string {
 }
 
 export function WizardHeader({
-  lifecycle,
   isWalletConnected,
   walletAddress,
   isBusy,
@@ -36,12 +32,6 @@ export function WizardHeader({
       </div>
 
       <div className="flex items-center gap-2">
-        <span
-          className={`rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-1 text-xs font-medium text-slate-400 ${lifecycle.tone}`}
-        >
-          {lifecycle.label}
-        </span>
-
         {isWalletConnected ? (
           <div className="relative">
             <button

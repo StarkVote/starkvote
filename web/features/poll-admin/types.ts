@@ -32,6 +32,8 @@ export type LifecycleBadge = {
 
 export type RegistryReadContract = {
   is_frozen: (pollId: number) => Promise<unknown>;
+  is_eligible: (pollId: number, address: string) => Promise<unknown>;
+  has_registered: (pollId: number, address: string) => Promise<unknown>;
   get_leaf_count: (pollId: number) => Promise<unknown>;
   get_leaf: (pollId: number, index: number) => Promise<unknown>;
   get_poll_admin: (pollId: number) => Promise<unknown>;
@@ -69,3 +71,16 @@ export type BusyAction =
   | "freeze"
   | "create_poll"
   | "finalize";
+
+export type AddressData = {
+  pollIdInput: string;
+  eligibleInput: string;
+  optionsCountInput: string;
+  durationInput: string;
+  merkleRootInput: string;
+  optionLabelsInput: string;
+  currentStep: number;
+  lastTxHash: string;
+  eligibleAddresses: string[];
+  status: PollStatus | null;
+};
