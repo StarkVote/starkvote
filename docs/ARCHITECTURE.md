@@ -143,7 +143,7 @@ Each proof produces a deterministic `nullifier_hash = f(identity_secret, scope)`
 
 | Contract | Address |
 |----------|---------|
-| Groth16VerifierBN254 | `0x1e887ebf03a47de3e22cae4892c13da338e9d4a860b994abbafacdc77874951` |
-| Semaphore30Verifier | `0x54df8c3ccfa7f2383c37765c0ac2b76f5b039066eff832dd934945415e687ff` |
-| VoterSetRegistry | `0x45a71bd1975fabda91c6b74850472b4cf5f7e9fd163603f1e6602500fb42411` |
-| Poll | `0x380953626f285190c62dadb3f26886e70b5ba82f4ccc815718534912cdb1efc` |
+| Groth16VerifierBN254 | `0x45dca89d2099d3b5ccae177f25f8da91cf66a389ef45bfc479b4e836fcb5b15` |
+| Semaphore30Verifier | `0x7d1c3192e24889b498fd2ef69cde8214700bf5adbc78ae2abdc4ca4cd195602` |
+| VoterSetRegistry | `0x3f6eed2084c720ed37051b403a25a2110394be60cbd6ff604e26321e4b77a7d` |
+| Poll | `0x68b80b67a6c52cd2369a6d41d8df5ad90962a51ee1343079efc50a95b9cefc0` |
