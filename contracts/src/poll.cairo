@@ -8,6 +8,7 @@ struct PollData {
     end_time: u64,
     snapshot_root: u256,
     finalized: bool,
+    is_draw: bool,
     winner_option: u8,
     max_votes: u32,
 }
@@ -92,6 +93,7 @@ mod Poll {
     struct PollFinalized {
         #[key]
         poll_id: u64,
+        is_draw: bool,
         winner_option: u8,
         max_votes: u32,
     }
@@ -149,6 +151,7 @@ mod Poll {
                 end_time,
                 snapshot_root: merkle_root,
                 finalized: false,
+                is_draw: false,
                 winner_option: 0,
                 max_votes: 0,
             };
@@ -264,6 +267,7 @@ mod Poll {
 
             let mut winner_option: u8 = 0;
             let mut max_votes: u32 = self.tally.read((poll_id, 0));
+            let mut is_draw: bool = false;
 
             let mut i: u8 = 1;
             loop {
@@ -275,6 +279,9 @@ mod Poll {
                 if votes > max_votes {
                     max_votes = votes;
                     winner_option = i;
+                    is_draw = false;
+                } else if votes == max_votes {
+                    is_draw = true;
                 }
 
                 i += 1;
@@ -287,12 +294,13 @@ mod Poll {
                 end_time: poll.end_time,
                 snapshot_root: poll.snapshot_root,
                 finalized: true,
+                is_draw,
                 winner_option,
                 max_votes,
             };
             self.polls.write(poll_id, finalized_poll);
 
-            self.emit(PollFinalized { poll_id, winner_option, max_votes });
+            self.emit(PollFinalized { poll_id, is_draw, winner_option, max_votes });
         }
 
         fn get_registry(self: @ContractState) -> ContractAddress {
