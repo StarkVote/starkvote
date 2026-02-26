@@ -126,6 +126,8 @@ export function PollAdminWizard() {
                 hasPoll={Boolean(wizard.status?.exists)}
                 endTime={wizard.status?.endTime ?? 0}
                 finalized={wizard.status?.finalized ?? false}
+                isDraw={wizard.status?.isDraw ?? false}
+                winnerOption={wizard.status?.winnerOption ?? 0}
                 busyAction={wizard.busyAction}
                 isBusy={wizard.isBusy}
                 isWalletConnected={wizard.isWalletConnected}

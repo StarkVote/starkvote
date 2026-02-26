@@ -31,9 +31,13 @@ function formatCountdown(seconds: number): string {
 }
 
 type StepVoteProps = {
+  isConnected: boolean;
+  connecting: boolean;
+  sameAccountAsRegistrant: boolean;
   pollData: PollDetails | null;
   optionLabels: string[];
   selectedOption: number | null;
+  onConnect: () => void;
   onOptionSelect: (option: number) => void;
   identityInput: string;
   onIdentityInputChange: (value: string) => void;
@@ -46,9 +50,13 @@ type StepVoteProps = {
 };
 
 export function StepVote({
+  isConnected,
+  connecting,
+  sameAccountAsRegistrant,
   pollData,
   optionLabels,
   selectedOption,
+  onConnect,
   onOptionSelect,
   identityInput,
   onIdentityInputChange,
@@ -65,9 +73,13 @@ export function StepVote({
   const endTime = pollData?.endTime ?? 0;
   const remaining = useCountdown(endTime);
   const ended = endTime > 0 && remaining <= 0;
+  const hasVoted = Boolean(voteTx);
+  const optionsLocked = voting || ended || hasVoted;
   const canVote =
+    isConnected &&
     pollReady &&
     !ended &&
+    !hasVoted &&
     selectedOption !== null &&
     (identityInput.trim().length > 0 || hasSessionIdentity) &&
     !voting;
@@ -101,6 +113,13 @@ export function StepVote({
   /* Poll is ready — show voting UI */
   return (
     <div className="space-y-4">
+      {isConnected && sameAccountAsRegistrant && !voteTx ? (
+        <div className="rounded-lg border border-amber-500/25 bg-amber-950/25 px-4 py-3 text-xs text-amber-200">
+          You are using the same account for commitment registration and voting.
+          Your wallet address will be exposed in this vote transaction.
+        </div>
+      ) : null}
+
       {endTime > 0 && (
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3">
           {ended ? (
@@ -129,7 +148,7 @@ export function StepVote({
                 key={option}
                 type="button"
                 onClick={() => onOptionSelect(option)}
-                disabled={voting}
+                disabled={optionsLocked}
                 className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition ${
                   isSelected
                     ? "border-violet-500 bg-violet-500/20 text-violet-100"
@@ -184,11 +203,19 @@ export function StepVote({
 
       <button
         type="button"
-        onClick={onVote}
-        disabled={!canVote}
+        onClick={isConnected ? onVote : onConnect}
+        disabled={isConnected ? !canVote : connecting}
         className={`${PRIMARY_BUTTON_CLASS} h-11 w-full`}
       >
-        {voting ? (voteProgress ?? "Processing…") : ended ? "Voting Closed" : "Vote"}
+        {isConnected
+          ? voting
+            ? (voteProgress ?? "Processing…")
+            : ended
+              ? "Voting Closed"
+              : "Vote"
+          : connecting
+            ? "Connecting…"
+            : "Connect Wallet"}
       </button>
 
       {generatedProofDisplay ? (

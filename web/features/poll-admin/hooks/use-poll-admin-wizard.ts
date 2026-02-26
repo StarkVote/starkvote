@@ -33,10 +33,10 @@ import type {
   RegistryWriteContract,
 } from "../types";
 import {
-  decodeByteArrayValue,
   getLifecycle,
   getMaxUnlockedStep,
   isConnectedWalletPollAdmin,
+  parseContractOptionLabels,
   parseOptionLabels,
   parseNonNegativeInt,
   parsePollId,
@@ -499,9 +499,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
           try {
             const labelsResult = await poll.get_option_labels(pollId);
-            if (Array.isArray(labelsResult)) {
-              optionLabels = labelsResult.map((value) => decodeByteArrayValue(value));
-            }
+            optionLabels = parseContractOptionLabels(labelsResult);
           } catch {
             // Legacy Poll deployments may not expose option labels.
             optionLabels = [];
@@ -517,6 +515,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
           endTime: toSafeNumber(pollData.end_time ?? 0n),
           snapshotRoot: `0x${fromU256(pollData.snapshot_root ?? 0n).toString(16)}`,
           finalized: toBoolean(pollData.finalized),
+          isDraw: toBoolean(pollData.is_draw ?? false),
           winnerOption: toSafeNumber(pollData.winner_option ?? 0n),
           maxVotes: toSafeNumber(pollData.max_votes ?? 0n),
           frozen: toBoolean(frozenRaw),

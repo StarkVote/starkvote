@@ -5,6 +5,7 @@ export type PollDetails = {
   endTime: number;
   snapshotRootHex: string;
   finalized: boolean;
+  isDraw: boolean;
   winnerOption: number;
   maxVotes: number;
 };

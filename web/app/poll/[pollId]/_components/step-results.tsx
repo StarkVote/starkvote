@@ -4,25 +4,41 @@ import { SECONDARY_BUTTON_CLASS } from "@/features/poll-admin/constants";
 import type { PollDetails } from "../_lib/types";
 
 type StepResultsProps = {
+  isConnected: boolean;
+  connecting: boolean;
   pollData: PollDetails | null;
   tallies: number[];
   optionLabels: string[];
   pollAddress: string;
   registryAddress: string;
   loading: boolean;
+  onConnect: () => void;
   onRefresh: () => void;
 };
 
 export function StepResults({
+  isConnected,
+  connecting,
   pollData,
   tallies,
   optionLabels,
   pollAddress,
   registryAddress,
   loading,
+  onConnect,
   onRefresh,
 }: StepResultsProps) {
   const maxVotes = tallies.length > 0 ? Math.max(...tallies, 1) : 1;
+  const winnerText = (() => {
+    if (!pollData?.finalized) {
+      return "-";
+    }
+    if (pollData.isDraw) {
+      return "Draw";
+    }
+    const index = pollData.winnerOption;
+    return optionLabels[index] || `Option ${index}`;
+  })();
 
   return (
     <div className="space-y-4">
@@ -72,11 +88,22 @@ export function StepResults({
         </p>
         <p>
           Winner:{" "}
-          <span className="text-slate-200">
-            {pollData?.finalized ? pollData.winnerOption : "-"}
-          </span>
+          <span className="text-slate-200">{winnerText}</span>
         </p>
       </div>
+
+      {optionLabels.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {optionLabels.map((label, index) => (
+            <span
+              key={`${index}-${label}`}
+              className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[10px] text-slate-300"
+            >
+              {index}: {label}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <p className="break-all font-mono text-[10px] text-slate-500">
         Root: {pollData?.snapshotRootHex ?? "-"}
@@ -103,11 +130,17 @@ export function StepResults({
 
       <button
         type="button"
-        onClick={onRefresh}
-        disabled={loading}
+        onClick={isConnected ? onRefresh : onConnect}
+        disabled={isConnected ? loading : connecting}
         className={`${SECONDARY_BUTTON_CLASS} w-full`}
       >
-        {loading ? "Refreshing\u2026" : "Refresh"}
+        {isConnected
+          ? loading
+            ? "Refreshing\u2026"
+            : "Refresh"
+          : connecting
+            ? "Connecting\u2026"
+            : "Connect Wallet"}
       </button>
     </div>
   );

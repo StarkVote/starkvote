@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { byteArray, type AccountInterface, type ByteArray } from "starknet";
+import { type AccountInterface } from "starknet";
 import { connect, disconnect } from "starknetkit";
 
 import {
@@ -29,6 +29,7 @@ import {
 import { CARD_CLASS } from "@/features/poll-admin/constants";
 import { NoticeToast } from "@/features/poll-admin/components/notice-banner";
 import type { Notice } from "@/features/poll-admin/types";
+import { parseContractOptionLabels } from "@/features/poll-admin/utils";
 import { generateProofClientSide } from "@/lib/client/proof-generation";
 
 import { generateIdentityData, toIdentityJson } from "./_lib/identity";
@@ -47,22 +48,6 @@ import { StepConnect } from "./_components/step-connect";
 import { StepRegister } from "./_components/step-register";
 import { StepVote } from "./_components/step-vote";
 import { StepResults } from "./_components/step-results";
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-function decodeByteArrayValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object") {
-    try {
-      return byteArray.stringFromByteArray(value as ByteArray);
-    } catch {
-      // Fall through to string cast.
-    }
-  }
-  return String(value ?? "");
-}
 
 const VOTER_STEPS = [
   { id: 1, label: "Connect Wallet" },
@@ -92,13 +77,12 @@ function StepDots({
             key={i}
             type="button"
             onClick={() => unlocked && onNavigate(step)}
-            className={`h-1.5 rounded-full transition-all duration-300 ${
-              step === current
+            className={`h-1.5 rounded-full transition-all duration-300 ${step === current
                 ? "w-6 bg-violet-500"
                 : step < current
                   ? "w-1.5 bg-violet-500/40"
                   : "w-1.5 bg-white/[0.1]"
-            } ${unlocked ? "cursor-pointer" : "cursor-default"}`}
+              } ${unlocked ? "cursor-pointer" : "cursor-default"}`}
           />
         );
       })}
@@ -109,11 +93,22 @@ function StepDots({
 function getMaxVoterStep(
   isConnected: boolean,
   alreadyRegistered: boolean | null,
-  pollExists: boolean,
+  registerTx: string | null,
+  pollData: PollDetails | null,
+  voteTx: string | null,
 ): number {
   if (!isConnected) return 1;
-  if (alreadyRegistered !== true) return 2;
-  return pollExists ? 4 : 3;
+  const registrationCompleted =
+    alreadyRegistered === true || Boolean(registerTx);
+  if (!registrationCompleted) return 2;
+  if (!pollData?.exists) return 3;
+
+  const now = Math.floor(Date.now() / 1000);
+  const pollEnded = pollData.endTime > 0 && now > pollData.endTime;
+  const hasVoted = Boolean(voteTx);
+
+  // Keep users on Vote while the poll is live; unlock Results after vote/end/finalization.
+  return hasVoted || pollEnded || pollData.finalized ? 4 : 3;
 }
 
 /* ------------------------------------------------------------------ */
@@ -203,7 +198,9 @@ export default function PollPage() {
   const maxStep = getMaxVoterStep(
     isConnected,
     alreadyRegistered,
-    pollData?.exists ?? false,
+    registerTx,
+    pollData,
+    voteTx,
   );
 
   // Auto-advance: when maxStep increases (e.g. wallet connects, user
@@ -215,13 +212,18 @@ export default function PollPage() {
   const prevMaxRef = useRef(1);
   useEffect(() => {
     if (maxStep > prevMaxRef.current) {
-      const nextStep = prevMaxRef.current + 1;
-      if (nextStep > currentStepRef.current) {
-        actions.setCurrentStep(nextStep);
+      if (maxStep > currentStepRef.current) {
+        actions.setCurrentStep(maxStep);
       }
     }
     prevMaxRef.current = maxStep;
   }, [maxStep, actions]);
+
+  useEffect(() => {
+    if (currentStep > maxStep) {
+      actions.setCurrentStep(maxStep);
+    }
+  }, [currentStep, maxStep, actions]);
 
   const goToStep = useCallback(
     (step: number) =>
@@ -272,9 +274,7 @@ export default function PollPage() {
       let nextLabels: string[] = [];
       try {
         const labelsResult = await pollRead.get_option_labels(pollIdForCall);
-        if (Array.isArray(labelsResult)) {
-          nextLabels = labelsResult.map(decodeByteArrayValue);
-        }
+        nextLabels = parseContractOptionLabels(labelsResult);
       } catch {
         // Legacy polls may not expose option labels.
       }
@@ -616,8 +616,11 @@ export default function PollPage() {
 
             {currentStep === 2 ? (
               <StepRegister
+                isConnected={isConnected}
+                connecting={connectingWallet}
                 eligibleForPoll={eligibleForPoll}
                 alreadyRegistered={alreadyRegistered}
+                onConnect={() => void connectWallet()}
                 onRegister={() => void handleRegister()}
                 onDownloadIdentity={handleDownloadIdentity}
                 registering={registering}
@@ -628,9 +631,13 @@ export default function PollPage() {
 
             {currentStep === 3 ? (
               <StepVote
+                isConnected={isConnected}
+                connecting={connectingWallet}
+                sameAccountAsRegistrant={alreadyRegistered === true}
                 pollData={pollData}
                 optionLabels={optionLabels}
                 selectedOption={selectedOption}
+                onConnect={() => void connectWallet()}
                 onOptionSelect={actions.setSelectedOption}
                 identityInput={identityInput}
                 onIdentityInputChange={actions.setIdentityInput}
@@ -645,12 +652,15 @@ export default function PollPage() {
 
             {currentStep === 4 ? (
               <StepResults
+                isConnected={isConnected}
+                connecting={connectingWallet}
                 pollData={pollData}
                 tallies={tallies}
                 optionLabels={optionLabels}
                 pollAddress={DEFAULT_POLL_ADDRESS}
                 registryAddress={resolvedRegistryAddress}
                 loading={loadingState}
+                onConnect={() => void connectWallet()}
                 onRefresh={() => void loadOnChainState()}
               />
             ) : null}

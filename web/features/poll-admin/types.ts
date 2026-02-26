@@ -17,6 +17,7 @@ export type PollStatus = {
   endTime: number;
   snapshotRoot: string;
   finalized: boolean;
+  isDraw: boolean;
   winnerOption: number;
   maxVotes: number;
   frozen: boolean;

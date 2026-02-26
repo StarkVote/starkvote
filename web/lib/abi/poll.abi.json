@@ -99,6 +99,10 @@
         "type": "core::bool"
       },
       {
+        "name": "is_draw",
+        "type": "core::bool"
+      },
+      {
         "name": "winner_option",
         "type": "core::integer::u8"
       },
@@ -369,6 +373,11 @@
         "name": "poll_id",
         "type": "core::integer::u64",
         "kind": "key"
+      },
+      {
+        "name": "is_draw",
+        "type": "core::bool",
+        "kind": "data"
       },
       {
         "name": "winner_option",

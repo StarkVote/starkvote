@@ -151,4 +151,27 @@ export function decodeByteArrayValue(value: unknown): string {
   return String(value ?? "");
 }
 
+export function parseContractOptionLabels(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((entry) => decodeByteArrayValue(entry));
+  }
+
+  if (value && typeof value === "object") {
+    const map = value as Record<string, unknown>;
+
+    if (Array.isArray(map.snapshot)) {
+      return map.snapshot.map((entry) => decodeByteArrayValue(entry));
+    }
+
+    const numericEntries = Object.entries(map)
+      .filter(([key]) => /^\d+$/.test(key))
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([, entry]) => entry);
+    if (numericEntries.length > 0) {
+      return numericEntries.map((entry) => decodeByteArrayValue(entry));
+    }
+  }
+
+  return [];
+}
 

@@ -5,8 +5,11 @@ import { PRIMARY_BUTTON_CLASS } from "@/features/poll-admin/constants";
 import type { GeneratedIdentity } from "../_lib/types";
 
 type StepRegisterProps = {
+  isConnected: boolean;
+  connecting: boolean;
   eligibleForPoll: boolean | null;
   alreadyRegistered: boolean | null;
+  onConnect: () => void;
   onRegister: () => void;
   onDownloadIdentity: () => void;
   registering: boolean;
@@ -81,22 +84,26 @@ function IdentityMenu({
 }
 
 export function StepRegister({
+  isConnected,
+  connecting,
   eligibleForPoll,
   alreadyRegistered,
+  onConnect,
   onRegister,
   onDownloadIdentity,
   registering,
   registerTx,
   generatedIdentity,
 }: StepRegisterProps) {
+  const registrationCompleted = alreadyRegistered === true || Boolean(registerTx);
   const showIdentityActions = Boolean(registerTx && generatedIdentity);
 
-  if (alreadyRegistered === true) {
+  if (registrationCompleted) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-950/30 px-4 py-3">
           <p className="text-sm text-emerald-300">
-            Your commitment is registered.
+            Your commitment is registered for this poll.
           </p>
           {generatedIdentity ? (
             <IdentityMenu
@@ -117,7 +124,7 @@ export function StepRegister({
 
   return (
     <div className="space-y-4">
-      {eligibleForPoll === false ? (
+      {eligibleForPoll === false && !registrationCompleted ? (
         <div className="rounded-lg border border-red-500/20 bg-red-950/30 px-4 py-3 text-sm text-red-300">
           Your address is not whitelisted for this poll.
         </div>
@@ -130,11 +137,21 @@ export function StepRegister({
 
       <button
         type="button"
-        onClick={onRegister}
-        disabled={registering || eligibleForPoll === false}
+        onClick={isConnected ? onRegister : onConnect}
+        disabled={
+          isConnected
+            ? registering || eligibleForPoll === false
+            : connecting
+        }
         className={`${PRIMARY_BUTTON_CLASS} w-full`}
       >
-        {registering ? "Registering\u2026" : "Register"}
+        {isConnected
+          ? registering
+            ? "Registering\u2026"
+            : "Register"
+          : connecting
+            ? "Connecting\u2026"
+            : "Connect Wallet"}
       </button>
 
       {showIdentityActions ? (

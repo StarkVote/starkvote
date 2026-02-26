@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "../../constants";
 import type { Tally } from "../../types";
@@ -9,6 +9,8 @@ type StepManagePollProps = {
   hasPoll: boolean;
   endTime: number;
   finalized: boolean;
+  isDraw: boolean;
+  winnerOption: number;
   busyAction: string;
   isBusy: boolean;
   isWalletConnected: boolean;
@@ -48,6 +50,8 @@ export function StepManagePoll({
   hasPoll,
   endTime,
   finalized,
+  isDraw,
+  winnerOption,
   busyAction,
   isBusy,
   isWalletConnected,
@@ -59,15 +63,10 @@ export function StepManagePoll({
   const totalVotes = tallies.reduce((sum, t) => sum + t.votes, 0);
   const maxVotes = Math.max(1, ...tallies.map((t) => t.votes));
   const [copied, setCopied] = useState(false);
-
-  const winnerIndex = useMemo(() => {
-    if (tallies.length === 0 || totalVotes === 0) return -1;
-    let best = 0;
-    for (let i = 1; i < tallies.length; i++) {
-      if (tallies[i].votes > tallies[best].votes) best = i;
-    }
-    return best;
-  }, [tallies, totalVotes]);
+  const winnerIndex =
+    finalized && !isDraw && winnerOption >= 0 && winnerOption < tallies.length
+      ? winnerOption
+      : -1;
 
   const shareUrl =
     typeof window !== "undefined" && pollId
@@ -107,7 +106,7 @@ export function StepManagePoll({
                 <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
               </svg>
               <p className="text-sm font-medium text-emerald-400">
-                Poll finalized
+                Poll finalized{isDraw ? " as draw" : ""}
                 {totalVotes > 0 && (
                   <span className="ml-1.5 font-normal text-slate-500">
                     &middot; {totalVotes} vote{totalVotes !== 1 ? "s" : ""}
@@ -137,7 +136,7 @@ export function StepManagePoll({
         {hasPoll && tallies.length ? (
           tallies.map((item, i) => {
             const pct = totalVotes > 0 ? (item.votes / totalVotes) * 100 : 0;
-            const isWinner = finalized && i === winnerIndex && totalVotes > 0;
+            const isWinner = finalized && !isDraw && i === winnerIndex && totalVotes > 0;
             return (
               <div
                 key={item.option}

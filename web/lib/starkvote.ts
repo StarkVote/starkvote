@@ -22,11 +22,11 @@ export const DEFAULT_RPC_URL =
 
 export const DEFAULT_POLL_ADDRESS =
   process.env.NEXT_PUBLIC_POLL_ADDRESS ??
-  "0x5789a8b8844df95cd10689b3d5f2273ab4e769a4e5c1c6f062749e0d47aab73";
+  "0x5e22619ec8cb23c0bc0bc3984198de8165d0ea32798e50decc229a86729deea";
 
 export const DEFAULT_REGISTRY_ADDRESS =
   process.env.NEXT_PUBLIC_REGISTRY_ADDRESS ??
-  "0x524442ab0c7bae6a9a0ce2b00ac6d621b9502c454ffdc204c9b48a2c37a68c";
+  "0x2b202ccd6375fdf026d407d2921dfa2c71244fff42889c8cba482ff7cfa910b";
 
 export function normalizeHex(value: string): string {
   const trimmed = value.trim();
