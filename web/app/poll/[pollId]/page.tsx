@@ -543,7 +543,7 @@ export default function PollPage() {
     void loadOnChainState();
     const interval = setInterval(() => {
       void loadOnChainState();
-    }, 15_000);
+    }, 1_000);
     return () => clearInterval(interval);
   }, [loadOnChainState, pollIdForCall]);
 

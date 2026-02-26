@@ -620,7 +620,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
     const interval = setInterval(() => {
       void checkRegistrations();
-    }, 10_000);
+    }, 1_000);
 
     return () => clearInterval(interval);
   }, [eligibleAddresses.length, checkRegistrations]);

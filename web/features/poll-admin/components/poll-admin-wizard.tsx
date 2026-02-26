@@ -41,7 +41,7 @@ export function PollAdminWizard() {
     if (wizard.currentStep !== 4 || isFinalized) return;
     const interval = setInterval(() => {
       void wizard.refreshStatus(false);
-    }, 5_000);
+    }, 1_000);
     return () => clearInterval(interval);
   }, [wizard.currentStep, isFinalized, wizard.refreshStatus]);
 
