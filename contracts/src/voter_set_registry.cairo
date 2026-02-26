@@ -90,6 +90,7 @@ mod VoterSetRegistry {
                     break;
                 }
                 let addr = *addresses.at(i);
+                assert(!self.eligible.read((poll_id, addr)), 'Address already eligible');
                 self.eligible.write((poll_id, addr), true);
                 self.emit(EligibleAdded { poll_id, address: addr });
                 i += 1;
