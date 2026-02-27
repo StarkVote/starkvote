@@ -155,7 +155,10 @@ function parseVerifyingKey(vkData: RawVerificationKey): GaragaVerifyingKey {
 function resolveArtifactsDir(): string {
   const configured = process.env.SEMAPHORE_ARTIFACTS_DIR?.trim();
   if (!configured) {
-    return path.resolve(process.cwd(), "../zk/artifacts");
+    // Try local monorepo path first, fall back to public/artifacts for Vercel
+    const monorepo = path.resolve(process.cwd(), "../zk/artifacts");
+    if (fs.existsSync(monorepo)) return monorepo;
+    return path.resolve(process.cwd(), "public/artifacts");
   }
   return path.isAbsolute(configured)
     ? configured
