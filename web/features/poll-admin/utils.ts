@@ -2,6 +2,11 @@ import { normalizeHex, toBigIntValue } from "@/lib/starkvote";
 import { byteArray, type ByteArray } from "starknet";
 import type { LifecycleBadge, PollStatus } from "./types";
 
+export function truncateAddress(addr: string): string {
+  if (addr.length <= 12) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
 export function toSafeNumber(value: unknown): number {
   return Number(toBigIntValue(value));
 }
@@ -59,7 +64,7 @@ export function getLifecycle(status: PollStatus | null): LifecycleBadge {
     return { label: "Registration open", tone: "bg-sky-100 text-sky-800" };
   }
   if (!status.exists) {
-    return { label: "Ready to create poll", tone: "bg-amber-100 text-amber-800" };
+    return { label: "Ready to open", tone: "bg-amber-100 text-amber-800" };
   }
   if (status.finalized) {
     return { label: "Finalized", tone: "bg-emerald-100 text-emerald-800" };
@@ -96,14 +101,11 @@ export function getMaxUnlockedStep(
   const pollExists = Boolean(status?.exists);
 
   let maxUnlockedStep = 2;
-  if (hasPollAdmin || isFrozen || pollExists) {
+  if (isFrozen || pollExists) {
     maxUnlockedStep = 3;
   }
-  if (isFrozen || pollExists) {
-    maxUnlockedStep = 4;
-  }
   if (pollExists) {
-    maxUnlockedStep = 5;
+    maxUnlockedStep = 4;
   }
 
   return maxUnlockedStep;
@@ -117,7 +119,15 @@ export function isConnectedWalletPollAdmin(
     return false;
   }
 
-  return normalizeHex(status.pollAdmin).toLowerCase() === normalizeHex(walletAddress).toLowerCase();
+  try {
+    return (
+      BigInt(normalizeHex(status.pollAdmin)) !== 0n &&
+      BigInt(normalizeHex(status.pollAdmin)) ===
+        BigInt(normalizeHex(walletAddress))
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function parseOptionLabels(input: string): string[] {
@@ -140,3 +150,28 @@ export function decodeByteArrayValue(value: unknown): string {
   }
   return String(value ?? "");
 }
+
+export function parseContractOptionLabels(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((entry) => decodeByteArrayValue(entry));
+  }
+
+  if (value && typeof value === "object") {
+    const map = value as Record<string, unknown>;
+
+    if (Array.isArray(map.snapshot)) {
+      return map.snapshot.map((entry) => decodeByteArrayValue(entry));
+    }
+
+    const numericEntries = Object.entries(map)
+      .filter(([key]) => /^\d+$/.test(key))
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([, entry]) => entry);
+    if (numericEntries.length > 0) {
+      return numericEntries.map((entry) => decodeByteArrayValue(entry));
+    }
+  }
+
+  return [];
+}
+

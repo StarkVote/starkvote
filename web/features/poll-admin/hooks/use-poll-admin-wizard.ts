@@ -1,13 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { byteArray, shortString, type AccountInterface } from "starknet";
 import { Group } from "@semaphore-protocol/group";
-import { connect, disconnect } from "starknetkit";
+import { connect, disconnect, type StarknetkitConnector } from "starknetkit";
 import {
-  DEFAULT_POLL_ADDRESS,
-  DEFAULT_REGISTRY_ADDRESS,
-  DEFAULT_RPC_URL,
   createPollContract,
   createProvider,
   createRegistryContract,
@@ -19,6 +16,12 @@ import {
   toU256,
 } from "@/lib/starkvote";
 import { WIZARD_STEPS } from "../constants";
+import {
+  usePollAdminStore,
+  useActiveAddressData,
+  useActivePollKey,
+  getActiveEntryFromState,
+} from "../store";
 import type {
   BusyAction,
   LifecycleBadge,
@@ -30,10 +33,10 @@ import type {
   RegistryWriteContract,
 } from "../types";
 import {
-  decodeByteArrayValue,
   getLifecycle,
   getMaxUnlockedStep,
   isConnectedWalletPollAdmin,
+  parseContractOptionLabels,
   parseOptionLabels,
   parseNonNegativeInt,
   parsePollId,
@@ -46,6 +49,7 @@ export type UsePollAdminWizardResult = {
   steps: typeof WIZARD_STEPS;
   lifecycle: LifecycleBadge;
   notice: Notice | null;
+  clearNotice: () => void;
   status: PollStatus | null;
   lastTxHash: string;
   busyAction: BusyAction;
@@ -63,6 +67,8 @@ export type UsePollAdminWizardResult = {
   durationInput: string;
   merkleRootInput: string;
   optionLabelsInput: string;
+  eligibleAddresses: string[];
+  registeredVoters: Set<string>;
   isComputingRoot: boolean;
   currentStep: number;
   maxUnlockedStep: number;
@@ -89,6 +95,7 @@ export type UsePollAdminWizardResult = {
   createPoll: () => Promise<void>;
   finalizePoll: () => Promise<void>;
   computeSnapshotRoot: () => Promise<void>;
+  startNewPoll: () => void;
 };
 
 function findCreatePollAbiEntry(abi: unknown): Record<string, unknown> | null {
@@ -206,31 +213,43 @@ function encodeFeltSpan(values: string[]): string[] {
 }
 
 export function usePollAdminWizard(): UsePollAdminWizardResult {
-  const [rpcUrl, setRpcUrl] = useState(DEFAULT_RPC_URL);
-  const [pollAddress, setPollAddress] = useState(DEFAULT_POLL_ADDRESS);
-  const [registryAddress, setRegistryAddress] = useState(DEFAULT_REGISTRY_ADDRESS);
+  const store = usePollAdminStore();
+  const addressData = useActiveAddressData();
+  const activePollKey = useActivePollKey();
+
+  const {
+    rpcUrl,
+    pollAddress,
+    registryAddress,
+    walletAddress,
+    walletChainId,
+    notice,
+    busyAction,
+    isComputingRoot,
+  } = store;
+
+  const {
+    pollIdInput,
+    eligibleInput,
+    optionsCountInput,
+    durationInput,
+    merkleRootInput,
+    optionLabelsInput,
+    currentStep,
+    lastTxHash,
+    eligibleAddresses,
+    status,
+  } = addressData;
+
   const provider = useMemo(() => createProvider(rpcUrl), [rpcUrl]);
 
-  const [walletAccount, setWalletAccount] = useState<AccountInterface | null>(null);
-  const [walletAddress, setWalletAddress] = useState("");
-  const [walletChainId, setWalletChainId] = useState("");
+  const walletAccountRef = useRef<AccountInterface | null>(null);
+  const connectorRef = useRef<StarknetkitConnector | null>(null);
+  const hasAutoAdvanced = useRef(false);
+  const prevWalletAddressRef = useRef(walletAddress);
+  const [registeredVoters, setRegisteredVoters] = useState<Set<string>>(new Set());
 
-  const [pollIdInput, setPollIdInput] = useState("1");
-  const [eligibleInput, setEligibleInput] = useState("");
-
-  const [optionsCountInput, setOptionsCountInput] = useState("2");
-  const [durationInput, setDurationInput] = useState("120");
-  const [merkleRootInput, setMerkleRootInput] = useState("");
-  const [optionLabelsInput, setOptionLabelsInput] = useState("Yes\nNo");
-
-  const [status, setStatus] = useState<PollStatus | null>(null);
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const [lastTxHash, setLastTxHash] = useState("");
-  const [busyAction, setBusyAction] = useState<BusyAction>("");
-  const [isComputingRoot, setIsComputingRoot] = useState(false);
-  const [currentStep, setCurrentStep] = useState(1);
-
-  const isWalletConnected = Boolean(walletAccount && walletAddress);
+  const isWalletConnected = Boolean(walletAccountRef.current && walletAddress);
   const isBusy = Boolean(busyAction);
   const lifecycle = useMemo(() => getLifecycle(status), [status]);
   const isPollAdmin = useMemo(
@@ -243,8 +262,103 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
   );
 
   const canGoPrevious = currentStep > 1;
-  const canGoNext = currentStep < 5 && currentStep < maxUnlockedStep;
+  const canGoNext = currentStep < 4 && currentStep < maxUnlockedStep;
 
+  // --- Field setters ---
+  const setRpcUrl = useCallback(
+    (v: string) => usePollAdminStore.getState().setRpcUrl(v),
+    [],
+  );
+  const setPollAddress = useCallback(
+    (v: string) => usePollAdminStore.getState().setPollAddress(v),
+    [],
+  );
+  const setRegistryAddress = useCallback(
+    (v: string) => usePollAdminStore.getState().setRegistryAddress(v),
+    [],
+  );
+  const setPollIdInput = useCallback(
+    (v: string) => usePollAdminStore.getState().setAddressField("pollIdInput", v),
+    [],
+  );
+  const setEligibleInput = useCallback(
+    (v: string) => usePollAdminStore.getState().setAddressField("eligibleInput", v),
+    [],
+  );
+  const setOptionsCountInput = useCallback(
+    (v: string) => usePollAdminStore.getState().setAddressField("optionsCountInput", v),
+    [],
+  );
+  const setDurationInput = useCallback(
+    (v: string) => usePollAdminStore.getState().setAddressField("durationInput", v),
+    [],
+  );
+  const setMerkleRootInput = useCallback(
+    (v: string) => usePollAdminStore.getState().setAddressField("merkleRootInput", v),
+    [],
+  );
+  const setOptionLabelsInput = useCallback(
+    (v: string) => usePollAdminStore.getState().setAddressField("optionLabelsInput", v),
+    [],
+  );
+  const setCurrentStep = useCallback(
+    (v: number) => usePollAdminStore.getState().setAddressField("currentStep", v),
+    [],
+  );
+
+  // --- Wallet account change listener ---
+  const subscribeToConnector = useCallback(
+    (connector: StarknetkitConnector) => {
+      // Unsubscribe from the previous connector
+      if (connectorRef.current) {
+        connectorRef.current.removeAllListeners("change");
+        connectorRef.current.removeAllListeners("disconnect");
+      }
+      connectorRef.current = connector;
+
+      connector.on("change", async (data) => {
+        if (data.account) {
+          try {
+            const account = await connector.account(provider);
+            const address = toAddress(account.address);
+            walletAccountRef.current = account;
+            const chainId = data.chainId ? data.chainId.toString() : "";
+
+            const s = usePollAdminStore.getState();
+            s.setWalletIdentity(address, chainId);
+
+            const addrData = getActiveEntryFromState(usePollAdminStore.getState());
+            if (addrData && addrData.currentStep < 2) {
+              usePollAdminStore.getState().setAddressField("currentStep", 2);
+            }
+          } catch {
+            // Connector may have been invalidated.
+          }
+        }
+      });
+
+      connector.on("disconnect", () => {
+        walletAccountRef.current = null;
+        connectorRef.current = null;
+        const s = usePollAdminStore.getState();
+        s.clearWalletIdentity();
+        s.setNotice({ type: "info", message: "Wallet disconnected." });
+      });
+    },
+    [provider],
+  );
+
+  // Clean up connector listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (connectorRef.current) {
+        connectorRef.current.removeAllListeners("change");
+        connectorRef.current.removeAllListeners("disconnect");
+      }
+    };
+  }, []);
+
+  // --- Wallet actions ---
   const connectWallet = useCallback(async () => {
     try {
       const result = await connect({
@@ -259,16 +373,25 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
       const account = await result.connector.account(provider);
       const address = toAddress(account.address);
-      setWalletAccount(account);
-      setWalletAddress(address);
+      walletAccountRef.current = account;
       const chainIdFromConnect = result.connectorData?.chainId;
-      setWalletChainId(chainIdFromConnect ? chainIdFromConnect.toString() : "");
-      setCurrentStep((value) => Math.max(value, 2));
-      setNotice({ type: "success", message: `Connected wallet ${address}` });
+      const chainId = chainIdFromConnect ? chainIdFromConnect.toString() : "";
+
+      subscribeToConnector(result.connector);
+
+      const s = usePollAdminStore.getState();
+      s.setWalletIdentity(address, chainId);
+      s.setNotice(null);
+
+      // Advance to at least step 2
+      const addrData = getActiveEntryFromState(usePollAdminStore.getState());
+      if (addrData && addrData.currentStep < 2) {
+        usePollAdminStore.getState().setAddressField("currentStep", 2);
+      }
     } catch (error) {
-      setNotice({ type: "error", message: toErrorMessage(error) });
+      usePollAdminStore.getState().setNotice({ type: "error", message: toErrorMessage(error) });
     }
-  }, [provider]);
+  }, [provider, subscribeToConnector]);
 
   const disconnectWallet = useCallback(async () => {
     try {
@@ -277,13 +400,18 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       // Ignore disconnect failures and clear local state.
     }
 
-    setWalletAccount(null);
-    setWalletAddress("");
-    setWalletChainId("");
-    setCurrentStep(1);
-    setNotice({ type: "info", message: "Wallet connection cleared in UI." });
+    if (connectorRef.current) {
+      connectorRef.current.removeAllListeners("change");
+      connectorRef.current.removeAllListeners("disconnect");
+      connectorRef.current = null;
+    }
+    walletAccountRef.current = null;
+    const s = usePollAdminStore.getState();
+    s.clearWalletIdentity();
+    s.setNotice({ type: "info", message: "Wallet connection cleared in UI." });
   }, []);
 
+  // Silent reconnect on mount
   useEffect(() => {
     let ignore = false;
 
@@ -305,10 +433,20 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
         }
 
         const address = toAddress(account.address);
-        setWalletAccount(account);
-        setWalletAddress(address);
+        walletAccountRef.current = account;
         const chainIdFromConnect = result.connectorData?.chainId;
-        setWalletChainId(chainIdFromConnect ? chainIdFromConnect.toString() : "");
+        const chainId = chainIdFromConnect ? chainIdFromConnect.toString() : "";
+
+        subscribeToConnector(result.connector);
+
+        const s = usePollAdminStore.getState();
+        s.setWalletIdentity(address, chainId);
+
+        // Advance to at least step 2
+        const addrData = getActiveEntryFromState(usePollAdminStore.getState());
+        if (addrData && addrData.currentStep < 2) {
+          usePollAdminStore.getState().setAddressField("currentStep", 2);
+        }
       } catch {
         // No previous session is expected for first-time users.
       }
@@ -319,23 +457,22 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
     return () => {
       ignore = true;
     };
-  }, [provider]);
+  }, [provider, subscribeToConnector]);
 
-  useEffect(() => {
-    if (currentStep > maxUnlockedStep) {
-      setCurrentStep(maxUnlockedStep);
-    }
-  }, [currentStep, maxUnlockedStep]);
-
+  // --- refreshStatus ---
   const refreshStatus = useCallback(
     async (showNotice = true) => {
       try {
-        const pollId = parsePollId(pollIdInput);
+        const s = usePollAdminStore.getState();
+        const addrData = getActiveEntryFromState(s);
+        const currentPollIdInput = addrData?.pollIdInput ?? "";
+
+        const pollId = parsePollId(currentPollIdInput);
         const registry = createRegistryContract(
-          registryAddress,
+          s.registryAddress,
           provider,
         ) as unknown as RegistryReadContract;
-        const poll = createPollContract(pollAddress, provider) as unknown as PollReadContract;
+        const poll = createPollContract(s.pollAddress, provider) as unknown as PollReadContract;
 
         const [frozenRaw, leafCountRaw, pollAdminRaw, pollRaw] = await Promise.all([
           registry.is_frozen(pollId),
@@ -362,16 +499,14 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
           try {
             const labelsResult = await poll.get_option_labels(pollId);
-            if (Array.isArray(labelsResult)) {
-              optionLabels = labelsResult.map((value) => decodeByteArrayValue(value));
-            }
+            optionLabels = parseContractOptionLabels(labelsResult);
           } catch {
             // Legacy Poll deployments may not expose option labels.
             optionLabels = [];
           }
         }
 
-        setStatus({
+        const newStatus: PollStatus = {
           pollId,
           exists,
           optionsCount,
@@ -380,63 +515,179 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
           endTime: toSafeNumber(pollData.end_time ?? 0n),
           snapshotRoot: `0x${fromU256(pollData.snapshot_root ?? 0n).toString(16)}`,
           finalized: toBoolean(pollData.finalized),
+          isDraw: toBoolean(pollData.is_draw ?? false),
           winnerOption: toSafeNumber(pollData.winner_option ?? 0n),
           maxVotes: toSafeNumber(pollData.max_votes ?? 0n),
           frozen: toBoolean(frozenRaw),
           leafCount: toSafeNumber(leafCountRaw),
           pollAdmin: toAddress(pollAdminRaw),
           tallies,
-        });
+        };
+
+        usePollAdminStore.getState().setStatus(newStatus);
 
         if (showNotice) {
-          setNotice({ type: "success", message: "On-chain status refreshed." });
+          usePollAdminStore.getState().setNotice({ type: "success", message: "On-chain status refreshed." });
         }
       } catch (error) {
-        setNotice({ type: "error", message: toErrorMessage(error) });
+        usePollAdminStore.getState().setNotice({ type: "error", message: toErrorMessage(error) });
       }
     },
-    [pollAddress, pollIdInput, provider, registryAddress],
+    [provider],
   );
 
+  // Show notice when the connected wallet address changes
+  useEffect(() => {
+    const prev = prevWalletAddressRef.current;
+    prevWalletAddressRef.current = walletAddress;
+    if (!walletAddress || !prev || prev === walletAddress) return;
+    usePollAdminStore.getState().setNotice({
+      type: "info",
+      message: `Wallet changed to ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
+    });
+  }, [walletAddress]);
+
+  // Hydrate on-chain data when wallet address or active poll changes
+  useEffect(() => {
+    if (walletAddress && activePollKey) {
+      hasAutoAdvanced.current = false;
+      void refreshStatus(false);
+    }
+  }, [walletAddress, activePollKey, refreshStatus]);
+
+  // Clamp current step when maxUnlockedStep decreases
+  useEffect(() => {
+    if (currentStep > maxUnlockedStep) {
+      usePollAdminStore.getState().setAddressField("currentStep", maxUnlockedStep);
+    }
+  }, [currentStep, maxUnlockedStep]);
+
+  // Auto-advance to the maximum unlocked step on first status load
+  useEffect(() => {
+    if (status && !hasAutoAdvanced.current) {
+      hasAutoAdvanced.current = true;
+      const addrData = getActiveEntryFromState(usePollAdminStore.getState());
+      const curStep = addrData?.currentStep ?? 1;
+      if (curStep < maxUnlockedStep) {
+        usePollAdminStore.getState().setAddressField("currentStep", maxUnlockedStep);
+      }
+    }
+  }, [status, maxUnlockedStep]);
+
+  // --- Check registration status for eligible addresses ---
+  const checkRegistrations = useCallback(async () => {
+    try {
+      const s = usePollAdminStore.getState();
+      const addrData = getActiveEntryFromState(s);
+      if (!addrData || addrData.eligibleAddresses.length === 0) return;
+
+      const pollId = parsePollId(addrData.pollIdInput);
+      const registry = createRegistryContract(
+        s.registryAddress,
+        provider,
+      ) as unknown as RegistryReadContract;
+
+      const results = await Promise.all(
+        addrData.eligibleAddresses.map((addr) =>
+          registry.has_registered(pollId, addr).then(
+            (raw) => ({ addr, registered: toBoolean(raw) }),
+            () => ({ addr, registered: false }),
+          ),
+        ),
+      );
+
+      const newSet = new Set<string>();
+      for (const { addr, registered } of results) {
+        if (registered) newSet.add(addr);
+      }
+      setRegisteredVoters(newSet);
+    } catch {
+      // Silently ignore — polling will retry.
+    }
+  }, [provider]);
+
+  // Reset registeredVoters when active poll changes
+  useEffect(() => {
+    setRegisteredVoters(new Set());
+  }, [activePollKey]);
+
+  // Poll registration status when there are eligible addresses
+  useEffect(() => {
+    if (eligibleAddresses.length === 0) return;
+
+    // Initial check
+    void checkRegistrations();
+
+    const interval = setInterval(() => {
+      void checkRegistrations();
+    }, 1_000);
+
+    return () => clearInterval(interval);
+  }, [eligibleAddresses.length, checkRegistrations]);
+
+  // --- Write actions ---
   const runWriteAction = useCallback(
     async (
       actionName: Exclude<BusyAction, "">,
       action: (pollId: number) => Promise<string>,
     ): Promise<boolean> => {
       try {
-        if (!walletAccount) {
+        if (!walletAccountRef.current) {
           throw new Error("Connect a wallet before sending transactions.");
         }
 
-        const pollId = parsePollId(pollIdInput);
-        setBusyAction(actionName);
-        setNotice({ type: "info", message: `${actionName} submitted...` });
+        const s = usePollAdminStore.getState();
+        const addrData = getActiveEntryFromState(s);
+        const currentPollIdInput = addrData?.pollIdInput ?? "";
+
+        const pollId = parsePollId(currentPollIdInput);
+        s.setBusyAction(actionName);
+        s.setNotice({ type: "info", message: `${actionName} submitted...` });
 
         const txHash = await action(pollId);
-        setLastTxHash(txHash);
-        setNotice({ type: "success", message: `${actionName} confirmed: ${txHash}` });
+        usePollAdminStore.getState().setAddressField("lastTxHash", txHash);
+        usePollAdminStore.getState().setNotice({ type: "success", message: `${actionName} confirmed: ${txHash}` });
         await refreshStatus(false);
         return true;
       } catch (error) {
-        setNotice({ type: "error", message: toErrorMessage(error) });
+        usePollAdminStore.getState().setNotice({ type: "error", message: toErrorMessage(error) });
         return false;
       } finally {
-        setBusyAction("");
+        usePollAdminStore.getState().setBusyAction("");
       }
     },
-    [pollIdInput, refreshStatus, walletAccount],
+    [refreshStatus],
   );
 
   const addEligibleBatch = useCallback(async () => {
+    let submittedAddresses: string[] = [];
     const success = await runWriteAction("add_eligible_batch", async (pollId) => {
-      const addresses = parseAddressList(eligibleInput);
+      const s = usePollAdminStore.getState();
+      const addrData = getActiveEntryFromState(s);
+      const currentEligibleInput = addrData?.eligibleInput ?? "";
+
+      const inputAddresses = parseAddressList(currentEligibleInput);
+
+      // Always include the admin address first
+      const adminAddr = s.walletAddress;
+      const existingSet = new Set(addrData?.eligibleAddresses ?? []);
+      const addresses: string[] = [];
+      if (adminAddr && !existingSet.has(adminAddr)) {
+        addresses.push(adminAddr);
+      }
+      for (const addr of inputAddresses) {
+        if (addr.toLowerCase() !== adminAddr.toLowerCase() && !existingSet.has(addr)) {
+          addresses.push(addr);
+        }
+      }
       if (!addresses.length) {
         throw new Error("Provide at least one eligible wallet address.");
       }
+      submittedAddresses = addresses;
 
       const registry = createRegistryContract(
-        registryAddress,
-        walletAccount!,
+        s.registryAddress,
+        walletAccountRef.current!,
       ) as unknown as RegistryWriteContract;
       const isFrozenNow = toBoolean(await registry.is_frozen(pollId));
       if (isFrozenNow) {
@@ -450,16 +701,21 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       return txHash;
     });
 
-    if (success) {
-      setCurrentStep((value) => Math.max(value, 3));
+    if (success && submittedAddresses.length > 0) {
+      const s = usePollAdminStore.getState();
+      s.appendEligibleAddresses(submittedAddresses);
+      s.setAddressField("eligibleInput", "");
     }
-  }, [eligibleInput, provider, registryAddress, runWriteAction, walletAccount]);
+
+    // Stay on step 2 so the admin can add more addresses before freezing.
+  }, [provider, runWriteAction]);
 
   const freezeRegistry = useCallback(async () => {
     const success = await runWriteAction("freeze", async (pollId) => {
+      const s = usePollAdminStore.getState();
       const registry = createRegistryContract(
-        registryAddress,
-        walletAccount!,
+        s.registryAddress,
+        walletAccountRef.current!,
       ) as unknown as RegistryWriteContract;
       const isFrozenNow = toBoolean(await registry.is_frozen(pollId));
       if (isFrozenNow) {
@@ -472,33 +728,88 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
     });
 
     if (success) {
-      setCurrentStep((value) => Math.max(value, 4));
+      const addrData = getActiveEntryFromState(usePollAdminStore.getState());
+      const curStep = addrData?.currentStep ?? 1;
+      if (curStep < 3) {
+        usePollAdminStore.getState().setAddressField("currentStep", 3);
+      }
     }
-  }, [provider, registryAddress, runWriteAction, walletAccount]);
+  }, [provider, runWriteAction]);
 
-  const createPoll = useCallback(async () => {
-    const success = await runWriteAction("create_poll", async (pollId) => {
-      const optionsCount = parseNonNegativeInt(optionsCountInput, "Options count");
-      if (optionsCount <= 0 || optionsCount > 255) {
-        throw new Error("Options count must be between 1 and 255.");
+  const computeSnapshotRoot = useCallback(async () => {
+    try {
+      usePollAdminStore.getState().setIsComputingRoot(true);
+
+      const s = usePollAdminStore.getState();
+      const addrData = getActiveEntryFromState(s);
+      const currentPollIdInput = addrData?.pollIdInput ?? "";
+
+      const pollId = parsePollId(currentPollIdInput);
+      const registry = createRegistryContract(
+        s.registryAddress,
+        provider,
+      ) as unknown as RegistryReadContract;
+
+      const [isFrozenRaw, leafCountRaw] = await Promise.all([
+        registry.is_frozen(pollId),
+        registry.get_leaf_count(pollId),
+      ]);
+      const isFrozenNow = toBoolean(isFrozenRaw);
+      if (!isFrozenNow) {
+        throw new Error("Voter set must be frozen before computing snapshot root.");
       }
 
-      const duration = parseNonNegativeInt(durationInput, "Duration");
+      const leafCount = toSafeNumber(leafCountRaw);
+      const leaves: bigint[] = [];
+      for (let index = 0; index < leafCount; index += 1) {
+        const leafRaw = await registry.get_leaf(pollId, index);
+        leaves.push(fromU256(leafRaw));
+      }
+
+      const group = new Group(leaves);
+      const root = BigInt(group.root.toString());
+      usePollAdminStore.getState().setAddressField("merkleRootInput", root.toString());
+      usePollAdminStore.getState().setNotice({
+        type: "success",
+        message: `Computed snapshot root from ${leafCount} leaf/leaves: 0x${root.toString(16)}`,
+      });
+    } catch (error) {
+      usePollAdminStore.getState().setNotice({ type: "error", message: toErrorMessage(error) });
+    } finally {
+      usePollAdminStore.getState().setIsComputingRoot(false);
+    }
+  }, [provider]);
+
+  const createPoll = useCallback(async () => {
+    // Auto-compute snapshot root before creating the poll
+    await computeSnapshotRoot();
+
+    const success = await runWriteAction("create_poll", async (pollId) => {
+      const s = usePollAdminStore.getState();
+      const addrData = getActiveEntryFromState(s);
+
+      const currentDurationInput = addrData?.durationInput ?? "120";
+      const currentMerkleRootInput = addrData?.merkleRootInput ?? "";
+      const currentOptionLabelsInput = addrData?.optionLabelsInput ?? "Yes\nNo";
+
+      const optionLabels = parseOptionLabels(currentOptionLabelsInput);
+      const optionsCount = optionLabels.length;
+      if (optionsCount < 2 || optionsCount > 255) {
+        throw new Error("Add at least 2 options (max 255).");
+      }
+
+      const duration = parseNonNegativeInt(currentDurationInput, "Duration");
       if (duration <= 0) {
         throw new Error("Duration must be greater than 0 seconds.");
       }
       const startTime = Math.floor(Date.now() / 1000);
       const endTime = startTime + duration;
-      if (!merkleRootInput.trim()) {
-        throw new Error("Merkle root is required.");
-      }
-      const optionLabels = parseOptionLabels(optionLabelsInput);
-      if (optionLabels.length !== optionsCount) {
-        throw new Error(`Expected ${optionsCount} option labels, received ${optionLabels.length}.`);
+      if (!currentMerkleRootInput.trim()) {
+        throw new Error("Merkle root is required. No registered voters found.");
       }
 
       const registryRead = createRegistryContract(
-        registryAddress,
+        s.registryAddress,
         provider,
       ) as unknown as RegistryReadContract;
       const isFrozenNow = toBoolean(await registryRead.is_frozen(pollId));
@@ -506,8 +817,8 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
         throw new Error("Voter set must be frozen before creating a poll.");
       }
 
-      const normalizedPollAddress = normalizeHex(pollAddress);
-      const merkleRootU256 = toU256(merkleRootInput.trim());
+      const normalizedPollAddress = normalizeHex(s.pollAddress);
+      const merkleRootU256 = toU256(currentMerkleRootInput.trim());
 
       const containsInputTooLongError = (value: unknown): boolean => {
         const queue: unknown[] = [value];
@@ -545,9 +856,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       try {
         const classAt = await provider.getClassAt(normalizedPollAddress);
         const abi = (classAt as { abi?: unknown }).abi;
-        const detected = extractCreatePollInputCount(
-          abi,
-        );
+        const detected = extractCreatePollInputCount(abi);
         if (detected) {
           createPollInputCount = detected;
         }
@@ -602,7 +911,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       // explicitly and executing the entrypoint directly.
       let txResult: { transaction_hash: string };
       try {
-        txResult = await walletAccount!.execute({
+        txResult = await walletAccountRef.current!.execute({
           contractAddress: normalizedPollAddress,
           entrypoint: "create_poll",
           calldata: initialCalldata,
@@ -616,7 +925,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
         try {
         // Legacy Poll deployments use create_poll without option_labels.
-        txResult = await walletAccount!.execute({
+        txResult = await walletAccountRef.current!.execute({
           contractAddress: normalizedPollAddress,
           entrypoint: "create_poll",
           calldata: legacyRootCalldata(),
@@ -627,7 +936,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
         }
 
           // Oldest deployments may have create_poll without snapshot root and labels.
-        txResult = await walletAccount!.execute({
+        txResult = await walletAccountRef.current!.execute({
           contractAddress: normalizedPollAddress,
           entrypoint: "create_poll",
           calldata: legacyBasicCalldata(),
@@ -641,91 +950,52 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
     });
 
     if (success) {
-      setCurrentStep(5);
+      usePollAdminStore.getState().setAddressField("currentStep", 4);
     }
-  }, [
-    durationInput,
-    merkleRootInput,
-    optionLabelsInput,
-    optionsCountInput,
-    provider,
-    pollAddress,
-    registryAddress,
-    runWriteAction,
-    walletAccount,
-  ]);
+  }, [provider, runWriteAction, computeSnapshotRoot]);
 
   const finalizePoll = useCallback(async () => {
     await runWriteAction("finalize", async (pollId) => {
-      const poll = createPollContract(pollAddress, walletAccount!) as unknown as PollWriteContract;
+      const s = usePollAdminStore.getState();
+      const poll = createPollContract(s.pollAddress, walletAccountRef.current!) as unknown as PollWriteContract;
       const txResult = await poll.finalize(pollId);
       const txHash = txHashFromResult(txResult);
       await provider.waitForTransaction(txHash);
       return txHash;
     });
-  }, [pollAddress, provider, runWriteAction, walletAccount]);
-
-  const computeSnapshotRoot = useCallback(async () => {
-    try {
-      setIsComputingRoot(true);
-      const pollId = parsePollId(pollIdInput);
-      const registry = createRegistryContract(
-        registryAddress,
-        provider,
-      ) as unknown as RegistryReadContract;
-
-      const [isFrozenRaw, leafCountRaw] = await Promise.all([
-        registry.is_frozen(pollId),
-        registry.get_leaf_count(pollId),
-      ]);
-      const isFrozenNow = toBoolean(isFrozenRaw);
-      if (!isFrozenNow) {
-        throw new Error("Voter set must be frozen before computing snapshot root.");
-      }
-
-      const leafCount = toSafeNumber(leafCountRaw);
-      const leaves: bigint[] = [];
-      for (let index = 0; index < leafCount; index += 1) {
-        const leafRaw = await registry.get_leaf(pollId, index);
-        leaves.push(fromU256(leafRaw));
-      }
-
-      const group = new Group(leaves);
-      const root = BigInt(group.root.toString());
-      setMerkleRootInput(root.toString());
-      setNotice({
-        type: "success",
-        message: `Computed snapshot root from ${leafCount} leaf/leaves: 0x${root.toString(16)}`,
-      });
-    } catch (error) {
-      setNotice({ type: "error", message: toErrorMessage(error) });
-    } finally {
-      setIsComputingRoot(false);
-    }
-  }, [pollIdInput, provider, registryAddress]);
+  }, [provider, runWriteAction]);
 
   const goPreviousStep = useCallback(() => {
-    setCurrentStep((value) => Math.max(1, value - 1));
+    const addrData = getActiveEntryFromState(usePollAdminStore.getState());
+    const curStep = addrData?.currentStep ?? 1;
+    usePollAdminStore.getState().setAddressField("currentStep", Math.max(1, curStep - 1));
   }, []);
 
   const goNextStep = useCallback(() => {
-    setCurrentStep((value) => Math.min(5, value + 1));
+    const addrData = getActiveEntryFromState(usePollAdminStore.getState());
+    const curStep = addrData?.currentStep ?? 1;
+    usePollAdminStore.getState().setAddressField("currentStep", Math.min(4, curStep + 1));
   }, []);
 
   const goToStep = useCallback(
     (step: number) => {
-      if (step < 1 || step > 5 || step > maxUnlockedStep) {
+      if (step < 1 || step > 4 || step > maxUnlockedStep) {
         return;
       }
-      setCurrentStep(step);
+      usePollAdminStore.getState().setAddressField("currentStep", step);
     },
     [maxUnlockedStep],
   );
+
+  const startNewPoll = useCallback(() => {
+    usePollAdminStore.getState().startNewPoll();
+  }, []);
 
   return {
     steps: WIZARD_STEPS,
     lifecycle,
     notice,
+    clearNotice: useCallback(() => usePollAdminStore.getState().setNotice(null), []),
     status,
     lastTxHash,
     busyAction,
@@ -743,6 +1013,8 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
     durationInput,
     merkleRootInput,
     optionLabelsInput,
+    eligibleAddresses,
+    registeredVoters,
     isComputingRoot,
     currentStep,
     maxUnlockedStep,
@@ -769,5 +1041,6 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
     createPoll,
     finalizePoll,
     computeSnapshotRoot,
+    startNewPoll,
   };
 }

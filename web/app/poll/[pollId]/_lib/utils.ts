@@ -121,6 +121,12 @@ export function parseVotePayload(input: string): ParsedVotePayload {
 
 export function parsePollDetails(raw: unknown): PollDetails {
   const snapshotRoot = toBigIntValue(readField(raw, "snapshot_root", 4) ?? 0);
+  const hasIsDrawField =
+    (typeof raw === "object" && raw !== null && "is_draw" in raw) ||
+    (Array.isArray(raw) && raw.length >= 9);
+  const winnerIndex = hasIsDrawField ? 7 : 6;
+  const maxVotesIndex = hasIsDrawField ? 8 : 7;
+
   return {
     exists: toBoolean(readField(raw, "exists", 0)),
     optionsCount: toSafeNumber(readField(raw, "options_count", 1)),
@@ -128,8 +134,9 @@ export function parsePollDetails(raw: unknown): PollDetails {
     endTime: toSafeNumber(readField(raw, "end_time", 3)),
     snapshotRootHex: toHex(snapshotRoot),
     finalized: toBoolean(readField(raw, "finalized", 5)),
-    winnerOption: toSafeNumber(readField(raw, "winner_option", 6)),
-    maxVotes: toSafeNumber(readField(raw, "max_votes", 7)),
+    isDraw: hasIsDrawField ? toBoolean(readField(raw, "is_draw", 6)) : false,
+    winnerOption: toSafeNumber(readField(raw, "winner_option", winnerIndex)),
+    maxVotes: toSafeNumber(readField(raw, "max_votes", maxVotesIndex)),
   };
 }
 
