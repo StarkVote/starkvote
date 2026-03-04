@@ -135,7 +135,7 @@ export default function Home() {
             Create a Poll
           </Link>
           <a
-            href="https://github.com/anthropics/starkvote"
+            href="https://github.com/StarkVote/starkvote"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.05] px-7 text-base font-medium text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
