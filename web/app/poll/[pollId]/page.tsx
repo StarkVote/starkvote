@@ -207,6 +207,9 @@ export default function PollPage() {
     null,
   );
 
+  /* Question text */
+  const [questionText, setQuestionText] = useState<string | null>(null);
+
   /* Loading / busy */
   const [loadingState, setLoadingState] = useState(false);
   const [connectingWallet, setConnectingWallet] = useState(false);
@@ -532,7 +535,7 @@ export default function PollPage() {
       );
 
       setVoteProgress(
-        `Proof ready (leaf ${proofPayload.leaf_index} of ${proofPayload.leaf_count}). Submitting vote\u2026`,
+        `Proof ready. Submitting vote\u2026`,
       );
       const pollWrite = createPollContract(DEFAULT_POLL_ADDRESS, walletAccount);
       const tx = await pollWrite.vote(
@@ -579,6 +582,18 @@ export default function PollPage() {
   }, [loadOnChainState, pollIdForCall]);
 
   useEffect(() => {
+    if (!pollIdParam) return;
+    let cancelled = false;
+    fetch(`/api/questions?pollId=${pollIdParam}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.question) setQuestionText(data.question);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [pollIdParam]);
+
+  useEffect(() => {
     if (pollIdValidation.error) {
       setNotice({ type: "error", message: pollIdValidation.error });
     }
@@ -612,13 +627,20 @@ export default function PollPage() {
           <section className={`${CARD_CLASS} relative overflow-hidden`}>
             {registering && currentStep === 2 && <BusyOverlay label="Registering commitment on-chain…" />}
             {voting && currentStep === 3 && <BusyOverlay label={voteProgress ?? "Submitting vote…"} />}
-            <div className="mb-6 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium uppercase tracking-widest text-slate-500">
-                {stepLabel}
-              </p>
-              <p className="text-xs tabular-nums text-slate-500">
-                Poll #{pollIdParam}
-              </p>
+            <div className="mb-6">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium uppercase tracking-widest text-slate-500">
+                  {stepLabel}
+                </p>
+                <p className="text-xs tabular-nums text-slate-500">
+                  Poll #{pollIdParam}
+                </p>
+              </div>
+              {questionText && currentStep >= 2 && (
+                <p className="mt-2 text-base font-medium text-slate-200">
+                  {questionText}
+                </p>
+              )}
             </div>
 
             {currentStep === 1 ? (
@@ -665,6 +687,7 @@ export default function PollPage() {
                 voteProgress={voteProgress}
                 voteTx={voteTx}
                 generatedProofDisplay={generatedProofDisplay}
+                questionText={questionText}
               />
             ) : null}
 
@@ -673,6 +696,7 @@ export default function PollPage() {
                 pollData={pollData}
                 tallies={tallies}
                 optionLabels={optionLabels}
+                questionText={questionText}
               />
             ) : null}
 

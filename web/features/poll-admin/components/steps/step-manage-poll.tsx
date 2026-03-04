@@ -16,6 +16,7 @@ type StepManagePollProps = {
   isWalletConnected: boolean;
   pollId: string;
   onFinalizePoll: () => Promise<void>;
+  questionText?: string | null;
 };
 
 function useCountdown(endTime: number) {
@@ -57,6 +58,7 @@ export function StepManagePoll({
   isWalletConnected,
   pollId,
   onFinalizePoll,
+  questionText,
 }: StepManagePollProps) {
   const remaining = useCountdown(endTime);
   const ended = endTime > 0 && remaining <= 0;

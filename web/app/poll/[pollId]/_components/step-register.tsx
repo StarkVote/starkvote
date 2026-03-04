@@ -122,18 +122,67 @@ export function StepRegister({
     );
   }
 
+  const [showDetails, setShowDetails] = useState(false);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {eligibleForPoll === false && !registrationCompleted ? (
         <div className="rounded-lg border border-red-500/20 bg-red-950/30 px-4 py-3 text-sm text-red-300">
           Your address is not whitelisted for this poll.
         </div>
       ) : null}
 
-      <p className="text-sm text-slate-400">
-        A Semaphore identity will be generated automatically and its commitment
-        registered on-chain.
-      </p>
+      <div className="space-y-2">
+        {/* Short tagline + expandable details */}
+        <div className="text-left">
+          <p className="text-sm text-slate-300">
+            Register to cast an anonymous vote
+          </p>
+        </div>
+
+        {/* Collapsible "How it works" */}
+        <button
+          type="button"
+          onClick={() => setShowDetails((v) => !v)}
+          className="flex w-full items-center justify-left gap-1.5 text-xs text-slate-500 transition hover:text-slate-300 cursor-pointer"
+        >
+          How it works
+          <svg
+            className={`h-3 w-3 transition-transform duration-200 ${showDetails ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <div
+          className={`grid transition-all duration-300 ease-in-out ${showDetails ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+        >
+          <div className="overflow-hidden">
+            <div className="space-y-2 pb-1">
+              {[
+                { n: "1", title: "Generate secret identity", desc: "Created locally in your browser" },
+                { n: "2", title: "Register commitment on-chain", desc: "Only a hash is sent — identity stays private" },
+                { n: "3", title: "Ready to vote", desc: "Cast an anonymous vote via zero-knowledge proof" },
+              ].map((s) => (
+                <div key={s.n} className="flex items-center gap-3 rounded-lg border border-white/[0.04] bg-white/[0.02] px-3 py-2">
+                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#633CFF]/15 text-[10px] font-semibold text-[#a78bfa]">{s.n}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-300">{s.title}</p>
+                    <p className="text-[11px] text-slate-500">{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+
 
       <button
         type="button"

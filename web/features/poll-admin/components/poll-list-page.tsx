@@ -1,10 +1,11 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePollAdminStore, parsePollKey } from "../store";
 import { usePollAdminWizard } from "../hooks/use-poll-admin-wizard";
 import { getLifecycle, getMaxUnlockedStep, isConnectedWalletPollAdmin } from "../utils";
-import { CARD_CLASS, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "../constants";
+import { CARD_CLASS, INPUT_CLASS, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "../constants";
 import { StarkVoteLogo } from "@/components/starkvote-logo";
 import { TopNav } from "@/components/top-nav";
 
@@ -15,6 +16,7 @@ type PollEntry = {
   maxStep: number;
   eligibleCount: number;
   isAdmin: boolean;
+  questionText?: string;
 };
 
 function useWalletPolls(wallet: string): PollEntry[] {
@@ -48,12 +50,56 @@ export function PollListPage() {
   const wizard = usePollAdminWizard();
   const polls = useWalletPolls(wizard.walletAddress);
 
+  const [showQuestionModal, setShowQuestionModal] = useState(false);
+  const [questionText, setQuestionText] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Fetch question texts for existing polls
+  const [questionMap, setQuestionMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (polls.length === 0) return;
+    let cancelled = false;
+    const fetchQuestions = async () => {
+      const map: Record<string, string> = {};
+      await Promise.all(
+        polls.map(async (poll) => {
+          try {
+            const res = await fetch(`/api/questions?pollId=${poll.pollId}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.question) map[poll.pollId] = data.question;
+            }
+          } catch { /* ignore */ }
+        }),
+      );
+      if (!cancelled) setQuestionMap(map);
+    };
+    void fetchQuestions();
+    return () => { cancelled = true; };
+  }, [polls.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleNewPoll = () => {
-    const newPollId = usePollAdminStore.getState().startNewPoll();
-    if (newPollId) {
-      router.push(`/admin/poll/${newPollId}`);
-    }
+    setQuestionText("");
+    setShowQuestionModal(true);
   };
+
+  const handleCreatePoll = useCallback(async () => {
+    if (!questionText.trim()) return;
+    setIsCreating(true);
+    try {
+      const newPollId = usePollAdminStore.getState().startNewPoll();
+      if (!newPollId) return;
+      await fetch("/api/questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pollId: newPollId, question: questionText.trim() }),
+      });
+      setShowQuestionModal(false);
+      router.push(`/admin/poll/${newPollId}`);
+    } finally {
+      setIsCreating(false);
+    }
+  }, [questionText, router]);
 
   const handleSelectPoll = (pollId: string) => {
     router.push(`/admin/poll/${pollId}`);
@@ -210,9 +256,10 @@ export function PollListPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-slate-200">
-                        Poll #{poll.pollId}
+                        {questionMap[poll.pollId] || `Poll #${poll.pollId}`}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
+                        {questionMap[poll.pollId] ? `#${poll.pollId} · ` : ""}
                         {poll.eligibleCount} eligible voter{poll.eligibleCount !== 1 ? "s" : ""}
                         {poll.isAdmin ? " \u00B7 Admin" : ""}
                       </p>
@@ -233,8 +280,53 @@ export function PollListPage() {
         )}
       </main>
 
+      {/* Question Modal */}
+      {showQuestionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className={`${CARD_CLASS} w-full max-w-md mx-4`}>
+            <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold text-white">
+              New Poll
+            </h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Enter the question voters will answer.
+            </p>
+            <input
+              type="text"
+              value={questionText}
+              onChange={(e) => setQuestionText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && questionText.trim() && !isCreating) {
+                  void handleCreatePoll();
+                }
+              }}
+              placeholder="e.g. Who should be the next president?"
+              className={`${INPUT_CLASS} mt-4`}
+              autoFocus
+            />
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowQuestionModal(false)}
+                disabled={isCreating}
+                className={SECONDARY_BUTTON_CLASS + " !h-10 !px-5 !text-sm"}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCreatePoll()}
+                disabled={!questionText.trim() || isCreating}
+                className={PRIMARY_BUTTON_CLASS + " !h-10 !px-5 !text-sm"}
+              >
+                {isCreating ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
-      
+
     </div>
   );
 }

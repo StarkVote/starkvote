@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CARD_CLASS, WIZARD_STEPS } from "../constants";
 import { usePollAdminWizard } from "../hooks/use-poll-admin-wizard";
@@ -93,6 +93,19 @@ function StepDots({ current, total }: { current: number; total: number }) {
 
 export function PollAdminWizard({ pollId }: { pollId?: string } = {}) {
   const wizard = usePollAdminWizard(pollId);
+  const [questionText, setQuestionText] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pollId) return;
+    let cancelled = false;
+    fetch(`/api/questions?pollId=${pollId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.question) setQuestionText(data.question);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [pollId]);
 
   const isFinalized = wizard.status?.finalized ?? false;
 
@@ -148,14 +161,21 @@ export function PollAdminWizard({ pollId }: { pollId?: string } = {}) {
             {!showNotAdminOverlay && (wizard.isBusy || wizard.isComputingRoot) && (
               <BusyOverlay action={wizard.isComputingRoot && !wizard.busyAction ? "computing_root" : wizard.busyAction} />
             )}
-            <div className="mb-6 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium uppercase tracking-widest text-slate-500">
-                {stepLabel}
-              </p>
-              {wizard.pollIdInput && (
-                <span className="text-xs tabular-nums text-slate-500">
-                  Poll #{wizard.pollIdInput}
-                </span>
+            <div className="mb-6">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium uppercase tracking-widest text-slate-500">
+                  {stepLabel}
+                </p>
+                {wizard.pollIdInput && (
+                  <span className="text-xs tabular-nums text-slate-500">
+                    Poll #{wizard.pollIdInput}
+                  </span>
+                )}
+              </div>
+              {questionText && (wizard.currentStep === 3 || wizard.currentStep === 4) && (
+                <p className="mt-2 text-base font-medium text-slate-200">
+                  {questionText}
+                </p>
               )}
             </div>
 
@@ -215,6 +235,7 @@ export function PollAdminWizard({ pollId }: { pollId?: string } = {}) {
                 isWalletConnected={wizard.isWalletConnected}
                 pollId={wizard.pollIdInput}
                 onFinalizePoll={wizard.finalizePoll}
+                questionText={questionText}
               />
             ) : null}
 
