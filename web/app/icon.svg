@@ -1,0 +1,26 @@
+<svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="shieldGrad" x1="40" y1="20" x2="160" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="50%" stop-color="#633CFF"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+    <linearGradient id="innerGrad" x1="70" y1="50" x2="130" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#c4b5fd" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#633CFF" stop-opacity="0.3"/>
+    </linearGradient>
+    <linearGradient id="checkGrad" x1="75" y1="90" x2="125" y2="130" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+  </defs>
+  <!-- Shield body -->
+  <path d="M100 22 L155 50 C155 50 158 110 100 170 C42 110 45 50 45 50 Z"
+        fill="url(#shieldGrad)" stroke="url(#innerGrad)" stroke-width="1.5" opacity="0.95"/>
+  <!-- Shield inner facets -->
+  <path d="M100 32 L145 55 C145 55 147 108 100 158 C53 108 55 55 55 55 Z"
+        fill="none" stroke="#c4b5fd" stroke-opacity="0.15" stroke-width="0.8"/>
+  <!-- Check mark -->
+  <path d="M78 102 L93 117 L125 82" stroke="url(#checkGrad)" stroke-width="5.5"
+        stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

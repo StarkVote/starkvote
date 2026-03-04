@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   useCallback,
@@ -28,6 +27,7 @@ import {
 
 import { CARD_CLASS } from "@/features/poll-admin/constants";
 import { NoticeToast } from "@/features/poll-admin/components/notice-banner";
+import { TopNav } from "@/components/top-nav";
 import type { Notice } from "@/features/poll-admin/types";
 import { parseContractOptionLabels } from "@/features/poll-admin/utils";
 import { generateProofClientSide } from "@/lib/client/proof-generation";
@@ -56,6 +56,33 @@ const VOTER_STEPS = [
   { id: 4, label: "Results" },
 ] as const;
 
+function BusyOverlay({ label }: { label: string }) {
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-2xl bg-[#0a0a12]/80 backdrop-blur-sm">
+      <svg
+        className="h-8 w-8 animate-spin text-[#633CFF]"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          className="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="3"
+        />
+        <path
+          className="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+        />
+      </svg>
+      <p className="text-base font-medium text-slate-200">{label}</p>
+    </div>
+  );
+}
+
 function StepDots({
   current,
   total,
@@ -68,7 +95,7 @@ function StepDots({
   onNavigate: (step: number) => void;
 }) {
   return (
-    <div className="flex items-center justify-center gap-2 pt-6">
+    <div className="flex items-center justify-center gap-2.5 pt-8">
       {Array.from({ length: total }, (_, i) => {
         const step = i + 1;
         const unlocked = step <= maxUnlocked;
@@ -77,11 +104,11 @@ function StepDots({
             key={i}
             type="button"
             onClick={() => unlocked && onNavigate(step)}
-            className={`h-1.5 rounded-full transition-all duration-300 ${step === current
-                ? "w-6 bg-violet-500"
+            className={`h-2 rounded-full transition-all duration-300 ${step === current
+                ? "w-8 bg-[#633CFF]"
                 : step < current
-                  ? "w-1.5 bg-violet-500/40"
-                  : "w-1.5 bg-white/[0.1]"
+                  ? "w-2 bg-[#633CFF]/40"
+                  : "w-2 bg-white/[0.1]"
               } ${unlocked ? "cursor-pointer" : "cursor-default"}`}
           />
         );
@@ -98,17 +125,21 @@ function getMaxVoterStep(
   voteTx: string | null,
 ): number {
   if (!isConnected) return 1;
+
+  // Allow jumping straight to Results when the poll is over, even if the
+  // user never registered (e.g. admin viewing results).
+  if (pollData?.exists) {
+    const now = Math.floor(Date.now() / 1000);
+    const pollEnded = pollData.endTime > 0 && now > pollData.endTime;
+    if (pollEnded || pollData.finalized || Boolean(voteTx)) return 4;
+  }
+
   const registrationCompleted =
     alreadyRegistered === true || Boolean(registerTx);
   if (!registrationCompleted) return 2;
   if (!pollData?.exists) return 3;
 
-  const now = Math.floor(Date.now() / 1000);
-  const pollEnded = pollData.endTime > 0 && now > pollData.endTime;
-  const hasVoted = Boolean(voteTx);
-
-  // Keep users on Vote while the poll is live; unlock Results after vote/end/finalization.
-  return hasVoted || pollEnded || pollData.finalized ? 4 : 3;
+  return 3;
 }
 
 /* ------------------------------------------------------------------ */
@@ -175,6 +206,9 @@ export default function PollPage() {
   const [alreadyRegistered, setAlreadyRegistered] = useState<boolean | null>(
     null,
   );
+
+  /* Question text */
+  const [questionText, setQuestionText] = useState<string | null>(null);
 
   /* Loading / busy */
   const [loadingState, setLoadingState] = useState(false);
@@ -501,7 +535,7 @@ export default function PollPage() {
       );
 
       setVoteProgress(
-        `Proof ready (leaf ${proofPayload.leaf_index} of ${proofPayload.leaf_count}). Submitting vote\u2026`,
+        `Proof ready. Submitting vote\u2026`,
       );
       const pollWrite = createPollContract(DEFAULT_POLL_ADDRESS, walletAccount);
       const tx = await pollWrite.vote(
@@ -548,6 +582,18 @@ export default function PollPage() {
   }, [loadOnChainState, pollIdForCall]);
 
   useEffect(() => {
+    if (!pollIdParam) return;
+    let cancelled = false;
+    fetch(`/api/questions?pollId=${pollIdParam}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.question) setQuestionText(data.question);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [pollIdParam]);
+
+  useEffect(() => {
     if (pollIdValidation.error) {
       setNotice({ type: "error", message: pollIdValidation.error });
     }
@@ -558,49 +604,43 @@ export default function PollPage() {
   /* ---- Render ---- */
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,80,200,0.15),transparent)]">
-      <main className="mx-auto flex min-h-screen max-w-lg flex-col px-6 py-12">
-        {/* Header */}
-        <header className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-violet-400/70">
-              StarkVote
-            </p>
-            <h1 className="text-lg font-semibold text-white">
-              Poll {pollIdParam}
-            </h1>
-          </div>
-          <div className="flex items-center gap-3">
-            {isConnected ? (
-              <button
-                type="button"
-                onClick={() => void disconnectWallet()}
-                className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-slate-400 transition hover:text-white"
-              >
-                {formatShortHash(accountAddress)} &times;
-              </button>
-            ) : null}
-            <Link
-              href="/"
-              className="text-xs text-slate-500 transition hover:text-white"
-            >
-              &larr; Back
-            </Link>
-          </div>
-        </header>
+    <div className="min-h-screen bg-[#0a0a12] bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,60,255,0.12),transparent)]">
+      <TopNav>
+        {isConnected ? (
+          <button
+            type="button"
+            onClick={() => void disconnectWallet()}
+            className="flex items-center gap-2.5 rounded-full border border-white/[0.08] bg-white/[0.05] px-4 py-2 text-sm text-slate-300 backdrop-blur-sm transition hover:bg-white/[0.08]"
+          >
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            {formatShortHash(accountAddress)}
+            <span className="ml-1 text-slate-500 hover:text-red-400">&times;</span>
+          </button>
+        ) : null}
+      </TopNav>
 
+      <main className="mx-auto flex min-h-[calc(100vh-80px)] max-w-2xl flex-col px-6 py-6">
         <NoticeToast notice={notice} onDismiss={dismissNotice} />
 
         {/* Wizard card */}
         <div className="flex flex-1 flex-col justify-center">
-          <section className={CARD_CLASS}>
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
-                {stepLabel}
-              </p>
-              <p className="text-xs tabular-nums text-slate-600">
-                #{pollIdParam}
-              </p>
+          <section className={`${CARD_CLASS} relative overflow-hidden`}>
+            {registering && currentStep === 2 && <BusyOverlay label="Registering commitment on-chain…" />}
+            {voting && currentStep === 3 && <BusyOverlay label={voteProgress ?? "Submitting vote…"} />}
+            <div className="mb-6">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium uppercase tracking-widest text-slate-500">
+                  {stepLabel}
+                </p>
+                <p className="text-xs tabular-nums text-slate-500">
+                  Poll #{pollIdParam}
+                </p>
+              </div>
+              {questionText && currentStep >= 2 && (
+                <p className="mt-2 text-base font-medium text-slate-200">
+                  {questionText}
+                </p>
+              )}
             </div>
 
             {currentStep === 1 ? (
@@ -647,21 +687,16 @@ export default function PollPage() {
                 voteProgress={voteProgress}
                 voteTx={voteTx}
                 generatedProofDisplay={generatedProofDisplay}
+                questionText={questionText}
               />
             ) : null}
 
             {currentStep === 4 ? (
               <StepResults
-                isConnected={isConnected}
-                connecting={connectingWallet}
                 pollData={pollData}
                 tallies={tallies}
                 optionLabels={optionLabels}
-                pollAddress={DEFAULT_POLL_ADDRESS}
-                registryAddress={resolvedRegistryAddress}
-                loading={loadingState}
-                onConnect={() => void connectWallet()}
-                onRefresh={() => void loadOnChainState()}
+                questionText={questionText}
               />
             ) : null}
 

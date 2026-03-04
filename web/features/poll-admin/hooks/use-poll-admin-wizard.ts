@@ -17,12 +17,15 @@ import {
 } from "@/lib/starkvote";
 import { WIZARD_STEPS } from "../constants";
 import {
+  DEFAULT_ADDRESS_DATA,
+  pollKey,
   usePollAdminStore,
   useActiveAddressData,
   useActivePollKey,
   getActiveEntryFromState,
 } from "../store";
 import type {
+  AddressData,
   BusyAction,
   LifecycleBadge,
   Notice,
@@ -212,7 +215,15 @@ function encodeFeltSpan(values: string[]): string[] {
   return encoded;
 }
 
-export function usePollAdminWizard(): UsePollAdminWizardResult {
+// Module-level variables so wallet state persists across client-side navigations
+let _walletAccount: AccountInterface | null = null;
+let _connector: StarknetkitConnector | null = null;
+
+export function usePollAdminWizard(
+  /** When provided (e.g. from a URL param), the hook ensures the store is
+   *  switched to the entry for this poll ID once the wallet is connected. */
+  urlPollId?: string,
+): UsePollAdminWizardResult {
   const store = usePollAdminStore();
   const addressData = useActiveAddressData();
   const activePollKey = useActivePollKey();
@@ -243,8 +254,8 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
   const provider = useMemo(() => createProvider(rpcUrl), [rpcUrl]);
 
-  const walletAccountRef = useRef<AccountInterface | null>(null);
-  const connectorRef = useRef<StarknetkitConnector | null>(null);
+  const walletAccountRef = useRef<AccountInterface | null>(_walletAccount);
+  const connectorRef = useRef<StarknetkitConnector | null>(_connector);
   const hasAutoAdvanced = useRef(false);
   const prevWalletAddressRef = useRef(walletAddress);
   const [registeredVoters, setRegisteredVoters] = useState<Set<string>>(new Set());
@@ -315,6 +326,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
         connectorRef.current.removeAllListeners("disconnect");
       }
       connectorRef.current = connector;
+      _connector = connector;
 
       connector.on("change", async (data) => {
         if (data.account) {
@@ -322,6 +334,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
             const account = await connector.account(provider);
             const address = toAddress(account.address);
             walletAccountRef.current = account;
+            _walletAccount = account;
             const chainId = data.chainId ? data.chainId.toString() : "";
 
             const s = usePollAdminStore.getState();
@@ -339,7 +352,9 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
       connector.on("disconnect", () => {
         walletAccountRef.current = null;
+        _walletAccount = null;
         connectorRef.current = null;
+        _connector = null;
         const s = usePollAdminStore.getState();
         s.clearWalletIdentity();
         s.setNotice({ type: "info", message: "Wallet disconnected." });
@@ -347,16 +362,6 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
     },
     [provider],
   );
-
-  // Clean up connector listeners on unmount
-  useEffect(() => {
-    return () => {
-      if (connectorRef.current) {
-        connectorRef.current.removeAllListeners("change");
-        connectorRef.current.removeAllListeners("disconnect");
-      }
-    };
-  }, []);
 
   // --- Wallet actions ---
   const connectWallet = useCallback(async () => {
@@ -374,6 +379,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       const account = await result.connector.account(provider);
       const address = toAddress(account.address);
       walletAccountRef.current = account;
+      _walletAccount = account;
       const chainIdFromConnect = result.connectorData?.chainId;
       const chainId = chainIdFromConnect ? chainIdFromConnect.toString() : "";
 
@@ -404,8 +410,10 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       connectorRef.current.removeAllListeners("change");
       connectorRef.current.removeAllListeners("disconnect");
       connectorRef.current = null;
+      _connector = null;
     }
     walletAccountRef.current = null;
+    _walletAccount = null;
     const s = usePollAdminStore.getState();
     s.clearWalletIdentity();
     s.setNotice({ type: "info", message: "Wallet connection cleared in UI." });
@@ -413,6 +421,19 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
   // Silent reconnect on mount
   useEffect(() => {
+    // If wallet account is already available from a previous page, just sync refs
+    if (_walletAccount) {
+      walletAccountRef.current = _walletAccount;
+      connectorRef.current = _connector;
+      // Ensure store has wallet identity (may have been cleared as transient state)
+      const s = usePollAdminStore.getState();
+      if (!s.walletAddress) {
+        const address = toAddress(_walletAccount.address);
+        s.setWalletIdentity(address, s.walletChainId || "");
+      }
+      return;
+    }
+
     let ignore = false;
 
     const reconnectSilently = async () => {
@@ -434,6 +455,7 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
 
         const address = toAddress(account.address);
         walletAccountRef.current = account;
+        _walletAccount = account;
         const chainIdFromConnect = result.connectorData?.chainId;
         const chainId = chainIdFromConnect ? chainIdFromConnect.toString() : "";
 
@@ -458,6 +480,29 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
       ignore = true;
     };
   }, [provider, subscribeToConnector]);
+
+  // Sync URL poll ID into the store once the wallet is connected
+  useEffect(() => {
+    if (!urlPollId || !walletAddress) return;
+
+    const s = usePollAdminStore.getState();
+    const key = pollKey(walletAddress, urlPollId);
+
+    if (s.addressDataMap[key]) {
+      // Entry exists — just switch to it
+      s.switchPoll(key);
+    } else {
+      // Create a new entry for this poll ID and switch to it
+      const newData: AddressData = {
+        ...DEFAULT_ADDRESS_DATA,
+        pollIdInput: urlPollId,
+      };
+      usePollAdminStore.setState((prev) => ({
+        addressDataMap: { ...prev.addressDataMap, [key]: newData },
+        activePollKeys: { ...prev.activePollKeys, [walletAddress]: key },
+      }));
+    }
+  }, [urlPollId, walletAddress]);
 
   // --- refreshStatus ---
   const refreshStatus = useCallback(
@@ -728,7 +773,14 @@ export function usePollAdminWizard(): UsePollAdminWizardResult {
     });
 
     if (success) {
-      const addrData = getActiveEntryFromState(usePollAdminStore.getState());
+      // Optimistically mark frozen in case refreshStatus read stale RPC data,
+      // so maxUnlockedStep >= 3 and the clamping effect won't reset currentStep.
+      const s = usePollAdminStore.getState();
+      const addrData = getActiveEntryFromState(s);
+      if (addrData?.status && !addrData.status.frozen) {
+        s.setStatus({ ...addrData.status, frozen: true });
+      }
+
       const curStep = addrData?.currentStep ?? 1;
       if (curStep < 3) {
         usePollAdminStore.getState().setAddressField("currentStep", 3);

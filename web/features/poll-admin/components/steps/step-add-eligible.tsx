@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { normalizeHex } from "@/lib/starkvote";
-import { INPUT_CLASS, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "../../constants";
+import { SECONDARY_BUTTON_CLASS } from "../../constants";
 import { truncateAddress } from "../../utils";
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
@@ -219,7 +219,7 @@ export function StepAddEligible({
     muted?: boolean;
   }) => (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-mono transition ${
+      className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-mono transition ${
         muted
           ? "border-white/[0.06] bg-white/[0.02] text-slate-500"
           : "border-white/[0.08] bg-white/[0.04] text-slate-300"
@@ -229,7 +229,7 @@ export function StepAddEligible({
       {badges?.map((b) => (
         <span
           key={b.text}
-          className={`shrink-0 rounded px-1.5 py-px text-[9px] font-medium font-sans ${b.className}`}
+          className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-medium font-sans ${b.className}`}
         >
           {b.text}
         </span>
@@ -238,9 +238,9 @@ export function StepAddEligible({
         <button
           type="button"
           onClick={onRemove}
-          className="ml-0.5 shrink-0 cursor-pointer rounded p-0.5 text-slate-500 transition hover:bg-white/[0.08] hover:text-red-400"
+          className="ml-0.5 shrink-0 cursor-pointer rounded p-1 text-slate-500 transition hover:bg-white/[0.08] hover:text-red-400"
         >
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
           </svg>
         </button>
@@ -248,132 +248,190 @@ export function StepAddEligible({
     </span>
   );
 
+  const hasEligible = eligibleAddresses.length > 0 || (walletAddress && adminInEligible);
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Chips area */}
-      <div className="flex flex-wrap gap-1.5">
-        {/* Admin chip — always first, locked */}
-        {walletAddress && (
-          <Chip
-            label={truncateAddress(walletAddress)}
-            badges={[
-              { text: "admin", className: "bg-violet-500/15 text-violet-400" },
-              ...(adminInEligible
-                ? registeredVoters.has(walletAddress)
-                  ? [{ text: "registered", className: "bg-emerald-500/15 text-emerald-400" }]
-                  : [{ text: "eligible", className: "bg-emerald-500/15 text-emerald-400/70" }]
-                : []),
-            ]}
-          />
-        )}
+      {/* Eligible addresses (already on-chain) */}
+      {hasEligible && (
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-medium uppercase tracking-wider text-slate-500">
+            On-chain ({eligibleAddresses.length})
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {/* Admin chip */}
+            {walletAddress && adminInEligible && (
+              <Chip
+                label={truncateAddress(walletAddress)}
+                badges={[
+                  { text: "admin", className: "bg-[#633CFF]/15 text-[#a78bfa]" },
+                  ...(registeredVoters.has(walletAddress)
+                    ? [{ text: "registered", className: "bg-emerald-500/15 text-emerald-400" }]
+                    : [{ text: "eligible", className: "bg-emerald-500/15 text-emerald-400/70" }]),
+                ]}
+              />
+            )}
 
-        {/* Already-eligible address chips */}
-        {eligibleAddresses.map((addr) => {
-          const isAdmin =
-            walletAddress && addr.toLowerCase() === walletAddress.toLowerCase();
-          if (isAdmin) return null;
-          const hasReg = registeredVoters.has(addr);
-          return (
-            <Chip
-              key={addr}
-              label={truncateAddress(addr)}
-              muted={hasReg}
-              badges={
-                hasReg
-                  ? [{ text: "registered", className: "bg-emerald-500/15 text-emerald-400" }]
-                  : [{ text: "eligible", className: "bg-emerald-500/15 text-emerald-400/70" }]
-              }
-            />
-          );
-        })}
-
-        {/* Pending new chips from input */}
-        {pendingChips.map((chip, i) => (
-          <Chip
-            key={chip.normalized}
-            label={truncateAddress(chip.normalized)}
-            badges={[{ text: "new", className: "bg-violet-500/15 text-violet-400/70" }]}
-            onRemove={isFrozen ? undefined : () => removeChip(i)}
-          />
-        ))}
-      </div>
-
-      {/* Input field */}
-      {!isFrozen && (
-        <div className="flex flex-col gap-1">
-          <input
-            ref={inputRef}
-            type="text"
-            className={`${INPUT_CLASS}${validationMsg ? " !border-amber-500/50 !ring-amber-500/25" : ""}`}
-            placeholder={
-              eligibleAddresses.length === 0 && pendingChips.length === 0
-                ? "Paste or type wallet addresses"
-                : "Add more addresses..."
-            }
-            onPaste={handlePaste}
-            onKeyDown={handleKeyDown}
-            onChange={(e) => {
-              const val = e.target.value;
-              const trimmed = val.trim();
-
-              // Multi-address paste/type with separators
-              if (/[\s,]/.test(trimmed) && trimmed.length > 2) {
-                // Check for duplicates in the batch and show a message
-                const tokens = trimmed.split(/[\s,]+/).filter(Boolean);
-                let dupeCount = 0;
-                for (const t of tokens) {
-                  const msg = validateAddress(t);
-                  if (msg) dupeCount++;
-                }
-                if (dupeCount > 0) {
-                  showValidation(`${dupeCount} duplicate address${dupeCount > 1 ? "es" : ""} skipped`);
-                }
-                const current = eligibleInput.trim();
-                onEligibleInputChange(current ? `${current} ${trimmed}` : trimmed);
-                e.target.value = "";
-                return;
-              }
-
-              // Single address — auto-add if valid
-              const normalized = normalizeHex(trimmed);
-              if (ADDRESS_RE.test(normalized) && normalized.length >= 5) {
-                const msg = validateAddress(trimmed);
-                if (msg) {
-                  showValidation(msg);
-                  e.target.value = "";
-                  return;
-                }
-                const current = eligibleInput.trim();
-                onEligibleInputChange(current ? `${current} ${trimmed}` : trimmed);
-                e.target.value = "";
-              }
-            }}
-          />
-          {validationMsg && (
-            <p className="text-[11px] text-amber-400">{validationMsg}</p>
-          )}
+            {/* Other eligible address chips */}
+            {eligibleAddresses.map((addr) => {
+              const isAdmin =
+                walletAddress && addr.toLowerCase() === walletAddress.toLowerCase();
+              if (isAdmin) return null;
+              const hasReg = registeredVoters.has(addr);
+              return (
+                <Chip
+                  key={addr}
+                  label={truncateAddress(addr)}
+                  muted={hasReg}
+                  badges={
+                    hasReg
+                      ? [{ text: "registered", className: "bg-emerald-500/15 text-emerald-400" }]
+                      : [{ text: "eligible", className: "bg-emerald-500/15 text-emerald-400/70" }]
+                  }
+                />
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          className={PRIMARY_BUTTON_CLASS}
-          onClick={() => void onAddEligibleBatch()}
-          disabled={isBusy || !isWalletConnected || isFrozen || (newCount === 0 && adminInEligible)}
+      {/* Tag-input container for pending / new addresses */}
+      {!isFrozen && (
+        <div
+          className={`flex min-h-[120px] flex-col rounded-xl border bg-white/[0.05] transition ${
+            validationMsg
+              ? "border-amber-500/50 ring-1 ring-amber-500/25"
+              : "border-white/[0.08] focus-within:border-[#633CFF]/50 focus-within:ring-1 focus-within:ring-[#633CFF]/25"
+          }`}
+          onClick={() => inputRef.current?.focus()}
         >
-          {busyAction === "add_eligible_batch"
-            ? "Submitting..."
-            : (() => {
-                const total = newCount + (adminInEligible ? 0 : walletAddress ? 1 : 0);
-                return `Register Voters${total > 0 ? ` (${total})` : ""}`;
-              })()}
-        </button>
-        {!isFrozen && (
+          {/* Pending chips + input */}
+          <div className="flex flex-1 flex-wrap items-start gap-2 p-3">
+            {/* Admin chip shown here only if not yet eligible */}
+            {walletAddress && !adminInEligible && (
+              <Chip
+                label={truncateAddress(walletAddress)}
+                badges={[
+                  { text: "admin", className: "bg-[#633CFF]/15 text-[#a78bfa]" },
+                ]}
+              />
+            )}
+
+            {/* Pending new chips from input */}
+            {pendingChips.map((chip, i) => (
+              <Chip
+                key={chip.normalized}
+                label={truncateAddress(chip.normalized)}
+                badges={[{ text: "new", className: "bg-[#633CFF]/15 text-[#a78bfa]/70" }]}
+                onRemove={() => removeChip(i)}
+              />
+            ))}
+
+            {/* Inline text input */}
+            <input
+              ref={inputRef}
+              type="text"
+              className="min-w-[200px] flex-1 bg-transparent py-2 text-base text-slate-100 placeholder:text-slate-500 outline-none"
+              placeholder={
+                pendingChips.length === 0 && !walletAddress
+                  ? "Paste or type wallet addresses"
+                  : "Add more addresses..."
+              }
+              onPaste={handlePaste}
+              onKeyDown={handleKeyDown}
+              onChange={(e) => {
+                const val = e.target.value;
+                const trimmed = val.trim();
+
+                // Multi-address paste/type with separators
+                if (/[\s,]/.test(trimmed) && trimmed.length > 2) {
+                  const tokens = trimmed.split(/[\s,]+/).filter(Boolean);
+                  let dupeCount = 0;
+                  for (const t of tokens) {
+                    const msg = validateAddress(t);
+                    if (msg) dupeCount++;
+                  }
+                  if (dupeCount > 0) {
+                    showValidation(`${dupeCount} duplicate address${dupeCount > 1 ? "es" : ""} skipped`);
+                  }
+                  const current = eligibleInput.trim();
+                  onEligibleInputChange(current ? `${current} ${trimmed}` : trimmed);
+                  e.target.value = "";
+                  return;
+                }
+
+                // Single address — auto-add if valid
+                const normalized = normalizeHex(trimmed);
+                if (ADDRESS_RE.test(normalized) && normalized.length >= 5) {
+                  const msg = validateAddress(trimmed);
+                  if (msg) {
+                    showValidation(msg);
+                    e.target.value = "";
+                    return;
+                  }
+                  const current = eligibleInput.trim();
+                  onEligibleInputChange(current ? `${current} ${trimmed}` : trimmed);
+                  e.target.value = "";
+                }
+              }}
+            />
+          </div>
+
+          {/* Bottom bar: validation + submit */}
+          <div className="flex items-center justify-between border-t border-white/[0.06] px-3 py-2">
+            <span className="text-xs text-slate-500">
+              {validationMsg || (
+                newCount > 0 ? (
+                  <span className="text-[#a78bfa]">{newCount + (adminInEligible ? 0 : walletAddress ? 1 : 0)} to whitelist</span>
+                ) : (
+                  "Paste addresses above"
+                )
+              )}
+            </span>
+            <button
+              type="button"
+              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-[#633CFF]/80 px-3 text-xs font-medium text-white transition hover:bg-[#633CFF] disabled:cursor-not-allowed disabled:opacity-30"
+              onClick={() => void onAddEligibleBatch()}
+              disabled={isBusy || !isWalletConnected || (newCount === 0 && adminInEligible)}
+            >
+              {busyAction === "add_eligible_batch" ? (
+                "Submitting..."
+              ) : (
+                <>
+                  Submit to chain
+                  {(() => {
+                    const total = newCount + (adminInEligible ? 0 : walletAddress ? 1 : 0);
+                    return total > 0 ? ` (${total})` : "";
+                  })()}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* All registered — encourage freeze */}
+      {!isFrozen &&
+        eligibleAddresses.length > 0 &&
+        eligibleAddresses.every((a) => registeredVoters.has(a)) && (
+          <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3">
+            <svg className="h-5 w-5 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg>
+            <p className="text-sm text-emerald-300">
+              All voters are registered! You can now{" "}
+              <strong className="text-emerald-200">freeze the registry</strong> to lock
+              the voter list and proceed to the next step.
+            </p>
+          </div>
+        )}
+
+      {/* Secondary actions row */}
+      <div className="flex items-center justify-between">
+        {!isFrozen ? (
           <button
             type="button"
-            className={SECONDARY_BUTTON_CLASS}
+            className="group inline-flex cursor-pointer items-center gap-2 text-sm text-slate-500 transition hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => {
               const unregistered = eligibleAddresses.filter(
                 (a) => !registeredVoters.has(a),
@@ -386,24 +444,40 @@ export function StepAddEligible({
             }}
             disabled={isBusy || !isWalletConnected}
           >
-            {busyAction === "freeze" ? "Freezing..." : "Freeze Registry"}
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+            </svg>
+            {busyAction === "freeze" ? "Freezing..." : "Freeze registry"}
           </button>
+        ) : (
+          <span className="inline-flex items-center gap-2 text-sm text-emerald-400/70">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+            </svg>
+            Registry frozen
+          </span>
         )}
         {shareUrl && (
           <button
             type="button"
             onClick={copyLink}
             title={shareUrl}
-            className="ml-auto flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-white/[0.08] text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-300"
+            className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-slate-500 transition hover:text-slate-300"
           >
             {copied ? (
-              <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-              </svg>
+              <>
+                <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+                <span className="text-emerald-400">Copied!</span>
+              </>
             ) : (
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-              </svg>
+              <>
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                </svg>
+                Copy poll link
+              </>
             )}
           </button>
         )}
@@ -412,14 +486,14 @@ export function StepAddEligible({
       {/* Freeze confirmation modal */}
       {freezeConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-sm rounded-2xl border border-white/[0.08] bg-[#16161e] p-6 shadow-2xl">
-            <div className="mb-1 flex items-center gap-2">
-              <svg className="h-5 w-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="mx-4 w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#1a1035] p-8 shadow-2xl">
+            <div className="mb-2 flex items-center gap-2.5">
+              <svg className="h-6 w-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
               </svg>
-              <h3 className="text-sm font-semibold text-white">Freeze registry?</h3>
+              <h3 className="text-base font-semibold text-white">Freeze registry?</h3>
             </div>
-            <p className="mt-2 text-xs leading-relaxed text-slate-400">
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
               <span className="font-medium text-amber-400">
                 {freezeConfirm.unregistered} of {eligibleAddresses.length}
               </span>{" "}
@@ -427,7 +501,7 @@ export function StepAddEligible({
               registered yet. Once frozen, no new voters can be added. Unregistered
               voters will not be able to participate.
             </p>
-            <div className="mt-5 flex items-center justify-end gap-3">
+            <div className="mt-6 flex items-center justify-end gap-4">
               <button
                 type="button"
                 className={SECONDARY_BUTTON_CLASS}
@@ -437,7 +511,7 @@ export function StepAddEligible({
               </button>
               <button
                 type="button"
-                className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-amber-500/90 px-5 text-sm font-medium text-black transition hover:bg-amber-400"
+                className="inline-flex h-12 cursor-pointer items-center justify-center rounded-xl bg-amber-500/90 px-6 text-base font-medium text-black transition hover:bg-amber-400"
                 onClick={() => {
                   setFreezeConfirm(null);
                   void onFreezeRegistry();

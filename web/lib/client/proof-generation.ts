@@ -267,7 +267,7 @@ export async function generateProofClientSide({
     merkleProofSiblings[i] = 0n;
   }
 
-  onProgress?.("Generating ZK proof (this may take a minute)\u2026");
+  onProgress?.("Generating ZK proof\u2026");
   const snarkjs = await loadSnarkJs();
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(
     {

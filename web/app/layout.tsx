@@ -1,9 +1,21 @@
 import type { Metadata } from "next";
+import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+});
+
 export const metadata: Metadata = {
-  title: "StarkVote Admin",
-  description: "Admin dashboard for StarkVote poll lifecycle management",
+  title: "StarkVote — Anonymous On-Chain Voting",
+  description:
+    "Create tamper-proof anonymous polls powered by zero-knowledge proofs on Starknet. Votes are private by math, not by trust.",
 };
 
 export default function RootLayout({
@@ -13,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className={`${inter.variable} ${spaceGrotesk.variable} antialiased`}>{children}</body>
     </html>
   );
 }
