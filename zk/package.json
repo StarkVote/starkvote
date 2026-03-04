@@ -11,7 +11,8 @@
     "compute-root": "tsx scripts/compute_merkle_root.ts",
     "gen-proof": "tsx scripts/gen_proof.ts",
     "format-calldata": "tsx scripts/gen_calldata.ts",
-    "finalize-poll": "tsx scripts/interact.ts finalize"
+    "finalize-poll": "tsx scripts/interact.ts finalize",
+    "verify": "tsx scripts/verify_contracts.ts"
   },
   "dependencies": {
     "@semaphore-protocol/group": "^4.14.2",

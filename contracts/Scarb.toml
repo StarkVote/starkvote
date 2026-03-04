@@ -2,10 +2,11 @@
 name = "starkvote"
 version = "0.1.0"
 edition = "2024_07"
+license = "MIT"
 
 [dependencies]
 starknet = "2.14.0"
-garaga = { path = "garaga" }
+garaga = { path = "garaga/src" }
 
 [cairo]
 sierra-replace-ids = false
