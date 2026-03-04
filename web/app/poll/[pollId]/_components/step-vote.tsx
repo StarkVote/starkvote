@@ -89,21 +89,18 @@ export function StepVote({
     return (
       <div className="flex flex-col items-center gap-4 py-8">
         <div className="relative flex h-10 w-10 items-center justify-center">
-          <div className="absolute inset-0 animate-spin rounded-full border-2 border-violet-500/20 border-t-violet-500" />
+          <div className="absolute inset-0 animate-spin rounded-full border-2 border-[#633CFF]/20 border-t-[#633CFF]" />
         </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-slate-300">
+          <p className="text-md font-medium text-slate-300">
             Waiting for poll to open…
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-sm text-slate-500">
             {pollData === null
               ? "Loading poll data…"
               : !pollData.exists
                 ? "Poll has not been activated yet."
                 : "No options configured yet."}
-          </p>
-          <p className="mt-3 text-[10px] text-slate-600">
-            Checking automatically every 15s
           </p>
         </div>
       </div>
@@ -149,11 +146,10 @@ export function StepVote({
                 type="button"
                 onClick={() => onOptionSelect(option)}
                 disabled={optionsLocked}
-                className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition ${
-                  isSelected
-                    ? "border-violet-500 bg-violet-500/20 text-violet-100"
+                className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition ${isSelected
+                    ? "border-[#633CFF] bg-[#633CFF]/20 text-[#c4b5fd]"
                     : "border-white/[0.08] bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white"
-                } disabled:cursor-not-allowed disabled:opacity-60`}
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
               >
                 {label}
               </button>
@@ -177,15 +173,15 @@ export function StepVote({
           <span>
             Identity{" "}
             {hasSessionIdentity && !identityInput.trim() ? (
-              <span className="text-violet-400">(auto)</span>
+              <span className="text-[#a78bfa]">(auto)</span>
             ) : identityInput.trim() ? (
-              <span className="text-violet-400">(custom)</span>
+              <span className="text-[#a78bfa]">(custom)</span>
             ) : null}
           </span>
         </summary>
         <div className="border-t border-white/[0.04] px-3 pb-3 pt-2">
           {hasSessionIdentity && !identityInput.trim() ? (
-            <p className="mb-1.5 text-[11px] text-violet-300/70">
+            <p className="mb-1.5 text-[11px] text-[#c4b5fd]/70">
               Using identity from this session.
             </p>
           ) : null}
@@ -230,7 +226,7 @@ export function StepVote({
       ) : null}
 
       {voteTx ? (
-        <p className="text-xs text-violet-300">
+        <p className="text-xs text-[#c4b5fd]">
           Tx: <span className="font-mono">{voteTx}</span>
         </p>
       ) : null}

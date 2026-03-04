@@ -7,7 +7,7 @@ import {
 } from "@/lib/starkvote";
 import type { AddressData, BusyAction, Notice, PollStatus } from "./types";
 
-const DEFAULT_ADDRESS_DATA: AddressData = {
+export const DEFAULT_ADDRESS_DATA: AddressData = {
   pollIdInput: "",
   eligibleInput: "",
   optionsCountInput: "2",
@@ -75,8 +75,9 @@ export type PollAdminStore = {
   setBusyAction: (action: BusyAction) => void;
   setIsComputingRoot: (value: boolean) => void;
   appendEligibleAddresses: (addresses: string[]) => void;
-  startNewPoll: () => void;
+  startNewPoll: () => string;
   switchPoll: (key: string) => void;
+  findPollKey: (wallet: string, pollId: string) => string | null;
 };
 
 /** Get the active composite key for the current wallet. */
@@ -125,23 +126,9 @@ export const usePollAdminStore = create<PollAdminStore>()(
 
       setWalletIdentity: (address, chainId) => {
         const normalizedAddress = address.toLowerCase();
-        const state = get();
-        const addressDataMap = { ...state.addressDataMap };
-        const activePollKeys = { ...state.activePollKeys };
-
-        if (!activePollKeys[normalizedAddress]) {
-          // First time for this wallet — create a default poll entry
-          const newData = createDefaultAddressData();
-          const key = pollKey(normalizedAddress, newData.pollIdInput);
-          addressDataMap[key] = newData;
-          activePollKeys[normalizedAddress] = key;
-        }
-
         set({
           walletAddress: normalizedAddress,
           walletChainId: chainId,
-          addressDataMap,
-          activePollKeys,
         });
       },
 
@@ -203,7 +190,7 @@ export const usePollAdminStore = create<PollAdminStore>()(
 
       startNewPoll: () => {
         const state = get();
-        if (!state.walletAddress) return;
+        if (!state.walletAddress) return "";
         const newData = createDefaultAddressData();
         const key = pollKey(state.walletAddress, newData.pollIdInput);
         set({
@@ -216,6 +203,7 @@ export const usePollAdminStore = create<PollAdminStore>()(
             [state.walletAddress]: key,
           },
         });
+        return newData.pollIdInput;
       },
 
       switchPoll: (key) => {
@@ -228,6 +216,12 @@ export const usePollAdminStore = create<PollAdminStore>()(
             [state.walletAddress]: key,
           },
         });
+      },
+
+      findPollKey: (wallet, pollId) => {
+        const state = get();
+        const key = pollKey(wallet.toLowerCase(), pollId);
+        return state.addressDataMap[key] ? key : null;
       },
     }),
     {

@@ -70,7 +70,7 @@ export function getLifecycle(status: PollStatus | null): LifecycleBadge {
     return { label: "Finalized", tone: "bg-emerald-100 text-emerald-800" };
   }
   if (status.startTime > now) {
-    return { label: "Scheduled", tone: "bg-violet-100 text-violet-800" };
+    return { label: "Scheduled", tone: "bg-[#633CFF]/15 text-[#c4b5fd]" };
   }
   if (status.endTime < now) {
     return { label: "Awaiting finalize", tone: "bg-orange-100 text-orange-800" };

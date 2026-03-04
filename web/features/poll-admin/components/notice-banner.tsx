@@ -55,7 +55,7 @@ export function NoticeToast({ notice, onDismiss }: NoticeToastProps) {
       ? "border-red-500/20 bg-red-950/80 text-red-300"
       : notice.type === "success"
         ? "border-emerald-500/20 bg-emerald-950/80 text-emerald-300"
-        : "border-violet-500/20 bg-violet-950/80 text-violet-300";
+        : "border-[#633CFF]/20 bg-[#1a1035]/80 text-[#c4b5fd]";
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 flex items-end justify-end p-6">

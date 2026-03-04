@@ -55,11 +55,11 @@ export function PollSwitcher({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex cursor-pointer items-center gap-1.5 text-[10px] tabular-nums text-slate-500 transition hover:text-slate-300"
+        className="flex cursor-pointer items-center gap-2 text-xs tabular-nums text-slate-500 transition hover:text-slate-300"
       >
         <span>Poll #{pollIdInput}</span>
         <svg
-          className={`h-2.5 w-2.5 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -72,8 +72,8 @@ export function PollSwitcher({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-white/[0.08] bg-[#16161e] shadow-2xl">
-            <div className="max-h-48 overflow-y-auto py-1">
+          <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-white/[0.08] bg-[#1a1035] shadow-2xl">
+            <div className="max-h-56 overflow-y-auto py-1">
               {polls.map((poll) => {
                 const isActive = poll.compositeKey === activePollKey;
                 return (
@@ -85,20 +85,20 @@ export function PollSwitcher({
                       onNavigate(poll.maxStep);
                       setOpen(false);
                     }}
-                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition ${
+                    className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition ${
                       isActive
-                        ? "bg-violet-500/10 text-white"
+                        ? "bg-[#633CFF]/10 text-white"
                         : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
                     }`}
                   >
                     <span className="min-w-0 flex-1 truncate font-medium">
                       #{poll.pollId}
                     </span>
-                    <span className="shrink-0 text-[9px] text-slate-600">
+                    <span className="shrink-0 text-[10px] text-slate-600">
                       {poll.eligibleCount}e
                     </span>
                     <span
-                      className={`shrink-0 rounded-full px-1.5 py-px text-[9px] font-medium ${poll.lifecycle.tone}`}
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${poll.lifecycle.tone}`}
                     >
                       {poll.lifecycle.label}
                     </span>
@@ -113,9 +113,9 @@ export function PollSwitcher({
                   onStartNewPoll();
                   setOpen(false);
                 }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-violet-400 transition hover:bg-white/[0.04]"
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-[#a78bfa] transition hover:bg-white/[0.04]"
               >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
                 New Poll
